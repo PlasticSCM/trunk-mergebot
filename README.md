@@ -23,7 +23,7 @@ in *Windows* or `/var/lib/plasticscm/devops` in *macOS* or *Linux*.
 # Setup
 
 ## Configuration files
-You'll notice some configuration files under `/configuration`. Here's what they do:
+You'll notice some configuration files under `/src/configuration`. Here's what they do:
 * `trunkbot.log.conf`: log4net configuration. The output log file is specified here. This file should be in the binaries output directory.
 * `trunkbot.definition.conf`: mergebot definition file. You'll need to place this file in the Plastic SCM DevOps directory to allow the system to discover your trunkbot.
 * `trunkbot.config.template`: mergebot configuration template. It describes the expected format of the trunkbot configuration. We recommend to keep it in the binaries output directory
