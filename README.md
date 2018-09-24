@@ -14,8 +14,8 @@ Otherwise, it removes the temporary merge. It also notifies the user about the r
 of the branch processing.
 
 # Build
-The executable is built from .NET Framework code using the provided `trunkbot.csproj`
-project file. You can use Visual Studio or MSBuild to compile it.
+The executable is built from .NET Framework code using the provided `src/trunk-mergebot.sln`
+solution file. You can use Visual Studio or MSBuild to compile it.
 
 **Note:** We'll use `${DEVOPS_DIR}` as alias for `%PROGRAMFILES%\PlasticSCM5\server\devops`
 in *Windows* or `/var/lib/plasticscm/devops` in *macOS* or *Linux*.
