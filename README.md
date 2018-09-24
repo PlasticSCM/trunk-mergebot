@@ -15,6 +15,8 @@ in *Windows* or `/var/lib/plasticscm/devops` in *macOS* or *Linux*.
 
 # Setup
 If you just want to use the built-in trunk mergebot you don't need to do any of this.
+The trunkbot is available as a built-in mergebot in the DevOps section of the WebAdmin.
+Open it up and configure your own!
 
 ## Configuration files
 You'll notice some configuration files under `/src/configuration`. Here's what they do:
