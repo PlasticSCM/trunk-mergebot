@@ -3,15 +3,8 @@
 The trunk mergebot is an implementation of a Trunk-Based Development DevOps cycle
 as we understand it in the Plastic SCM team.
 
-# Behavior
-The trunk mergebot monitors branches in a given repository. When they are marked as 
-resolved in Plastic SCM and the related issue in the configured Issue Tracker
-System is done, the trunk mergebot temporarily merges that branch in the configured
-trunk branch and triggers a build in the configured Continuous Integration system.
-
-If the build succeeds, the trunk mergebot commits the temporary merge the trunk branch.
-Otherwise, it removes the temporary merge. It also notifies the user about the result
-of the branch processing.
+This is the source code used by the actual built-in mergebot. Use it as a reference
+to build your own mergebot!
 
 # Build
 The executable is built from .NET Framework code using the provided `src/trunk-mergebot.sln`
@@ -21,6 +14,7 @@ solution file. You can use Visual Studio or MSBuild to compile it.
 in *Windows* or `/var/lib/plasticscm/devops` in *macOS* or *Linux*.
 
 # Setup
+If you just want to use the built-in trunk mergebot you don't need to do any of this.
 
 ## Configuration files
 You'll notice some configuration files under `/src/configuration`. Here's what they do:
@@ -33,7 +27,18 @@ You'll notice some configuration files under `/src/configuration`. Here's what t
 To allow Plastic SCM Server DevOps to discover your custom trunkbot, just drop 
 the `trunkbot.definition.conf` file in `${DEVOPS_DIR}/config/mergebots/available$`.
 Make sure the `command` and `template` keys contain the appropriate values for
-your deployment!
+your deployment! Your custom mergebot will be listed in the mergebot types page of
+the WebAdmin under the "Custom" section.
+
+# Behavior
+The trunk mergebot monitors branches in a given repository. When they are marked as 
+resolved in Plastic SCM and the related issue in the configured Issue Tracker
+System is done, the trunk mergebot temporarily merges that branch in the configured
+trunk branch and triggers a build in the configured Continuous Integration system.
+
+If the build succeeds, the trunk mergebot commits the temporary merge the trunk branch.
+Otherwise, it removes the temporary merge. It also notifies the user about the result
+of the branch processing.
 
 # Support
 If you have any questions about this mergebot don't hesitate to contact us by
