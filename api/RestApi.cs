@@ -292,7 +292,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest(
                         endpoint, httpMethod, apiKey);
 
-                    GetResponse(request);
+                    ConsumeResponse(request);
                 }
                 catch (WebException ex)
                 {
@@ -313,7 +313,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest<TReq>(
                         endpoint, httpMethod, body, apiKey);
 
-                    GetResponse(request);
+                    ConsumeResponse(request);
                 }
                 catch (WebException ex)
                 {
@@ -416,9 +416,12 @@ namespace TrunkBot.Api
                 }
             }
 
-            static void GetResponse(WebRequest request)
+            static void ConsumeResponse(WebRequest request)
             {
-                using (WebResponse response = request.GetResponse()) ;
+                using (WebResponse response = request.GetResponse())
+                {
+                    // Discard the response body
+                }
             }
         }
 
