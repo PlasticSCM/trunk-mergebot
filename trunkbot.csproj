@@ -85,9 +85,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="configuration\trunkbot.conf" />
-    <None Include="configuration\trunkbot.config.template" />
-    <None Include="configuration\trunkbot.definition.conf" />
-    <None Include="configuration\trunkbot.log.conf" />
+    <None Include="configuration\trunkbot.config.template">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="configuration\trunkbot.definition.conf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="configuration\trunkbot.log.conf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
