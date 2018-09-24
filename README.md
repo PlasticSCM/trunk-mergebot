@@ -31,14 +31,65 @@ your deployment! Your custom mergebot will be listed in the mergebot types page 
 the WebAdmin under the "Custom" section.
 
 # Behavior
-The trunk mergebot monitors branches in a given repository. When they are marked as 
-resolved in Plastic SCM and the related issue in the configured Issue Tracker
-System is done, the trunk mergebot temporarily merges that branch in the configured
-trunk branch and triggers a build in the configured Continuous Integration system.
+The **Trunk Bot**, by its **mergebot** nature, is the central piece of the DevOps
+orchestration process. It's connected to the Plastic SCM Server, waiting for branches
+to be set to **resolved**. It also retrieves task information from **issue trackers**,
+triggers builds in external **CI systems** and it's able to **notify** the team
+about the progress and results of these operations.
 
-If the build succeeds, the trunk mergebot commits the temporary merge the trunk branch.
-Otherwise, it removes the temporary merge. It also notifies the user about the result
-of the branch processing.
+<p align="center">
+  <img alt="DevOps diagram" src="https://raw.githubusercontent.com/mig42/trunk-mergebot/master/doc/img/devops-diagram.png" />
+</p>
+
+**Trunk Bot** is our take on the [trunk-based development](https://trunkbaseddevelopment.com/)
+methodology. It's engineered to monitor many short-lived feature branches (we also
+call them *task branches*) and automatically merge them when the developers finish
+implementing the feature and the resulting CI builds are successful. This changes
+the definition of *Done*, which now means *delivered to production*.
+
+The first step begins when a user completes a task assigned to them. The related
+task branch receives a value for the `status` attribute to mark it as `resolved`.
+The information in the issue tracker updates as well to reflect that advance in
+the task lifecycle and notify a fellow developer that it's time for the code review.
+
+This attribute change sends a message to **Trunk Bot**. The resolved branch is now
+queued and pending to be processed. However, the bot won't take any further action
+until the code review is complete. This is when the **Issue tracker plug** comes
+into play: **Trunk Bot** will periodically poll the task issue to find out if the
+code review is complete. The code reviewer just needs to set the appropriate state
+in the task lifecycle to unlock the next step for **Trunk Bot**.
+
+When the code review is complete and the branch is properly identified as `resolved`
+in Plastic SCM, **Trunk Bot** will start a CI build using the **CI plug**. While
+the task branch is processing, its status will change to `testing` in both Plastic
+SCM (new value of the `status` attribute) and the configured Issue Tracker.
+
+**Trunk Bot** ensures that the trunk branch stability is never broken. It temporarily
+merges the task branch into the trunk branch and runs the CI builds in the resulting
+shelve. So, if the CI build fails, the shelve would be removed and the merge would
+roll back. No changes are committed to the repository. Also, the task status in the
+issue tracker and the `status` attribute would be set to `failed` to notify the result.
+
+<p align="center">
+  <img alt="Temporary merge" src="https://raw.githubusercontent.com/mig42/trunk-mergebot/master/doc/img/temporary-merge.png" />
+</p>
+
+However, if the merge operation isn't automatic (i.e. there are directory structure
+conflicts or file conflicts that can't be automatically solved), **Trunk Bot**
+considers that the branch processing failed, and it prompts the assigned developer
+to solve the merge conflicts before the branch is again set as `resolved`. The
+rate of automatic merges is improved thanks to our awesome [SemanticMerge](https://www.semanticmerge.com/) technology!
+
+Finally, if there aren't any merge conflicts and the build results were correct,
+then **Trunk Bot** attempts to commit the temporary merge to the trunk branch.
+The shelve is promoted to changeset and your trunk is enhanced with the new feature
+and a guaranteed stability! The task issue and the branch `status` attribute will
+be set to a new `merged` value to show the progress in its lifecycle.
+
+That's all! **Trunk bot** will work tirelessly monitoring your branches so that
+you and your team can focus on getting things done while the Plastic SCM DevOps
+ecosystem handles builds and merges. You might find interesting our
+[blogpost about DevOps](http://blog.plasticscm.com/2018/03/plasticscm-devops-primer.html), too!
 
 # Support
 If you have any questions about this mergebot don't hesitate to contact us by
