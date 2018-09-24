@@ -1,0 +1,4 @@
+#!/bin/sh
+
+TRUNKBOT_BIN_DIR=`dirname \`readlink -fn $0\``
+exec "/opt/plasticscm5/server/mono_setup" trunkbot mono "$TRUNKBOT_BIN_DIR/trunkbot.exe" "$@"
