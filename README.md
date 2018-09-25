@@ -40,7 +40,7 @@ triggers builds in external **CI systems** and it's able to **notify** the team
 about the progress and results of these operations.
 
 <p align="center">
-  <img alt="DevOps diagram" src="https://raw.githubusercontent.com/mig42/trunk-mergebot/master/doc/img/devops-diagram.png" />
+  <img alt="DevOps diagram" src="https://raw.githubusercontent.com/PlasticSCM/trunk-mergebot/master/doc/img/devops-diagram.png" />
 </p>
 
 **Trunk Bot** is our take on the [trunk-based development](https://trunkbaseddevelopment.com/)
@@ -73,7 +73,7 @@ roll back. No changes are committed to the repository. Also, the task status in 
 issue tracker and the `status` attribute would be set to `failed` to notify the result.
 
 <p align="center">
-  <img alt="Temporary merge" src="https://raw.githubusercontent.com/mig42/trunk-mergebot/master/doc/img/temporary-merge.png" />
+  <img alt="Temporary merge" src="https://raw.githubusercontent.com/PlasticSCM/trunk-mergebot/master/doc/img/temporary-merge.png" />
 </p>
 
 However, if the merge operation isn't automatic (i.e. there are directory structure
