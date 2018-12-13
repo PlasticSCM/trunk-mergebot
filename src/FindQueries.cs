@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using TrunkBot.Api;
+using TrunkBot.Labeling;
 
 namespace TrunkBot
 {
@@ -17,6 +18,7 @@ namespace TrunkBot
                 repository,
                 query,
                 DATE_FORMAT,
+                "retrieve a single branch by ID",
                 new string[] { "name" });
 
             if (findResult.Count == 0)
@@ -47,6 +49,7 @@ namespace TrunkBot
                 repository,
                 query,
                 DATE_FORMAT,
+                "retrieve the list of branches to process",
                 new string[] { "id", "name", "owner", "comment" });
 
             List<Branch> result = new List<Branch>();
@@ -59,6 +62,58 @@ namespace TrunkBot
                     GetStringValue(obj, "owner"),
                     GetStringValue(obj, "comment")));
             }
+            return result;
+        }
+
+        internal static Label FindMostRecentLabel(
+            RestApi restApi,
+            string repository,
+            DateTime limitQuerySince,
+            string pattern)
+        {
+            string query = string.Format(
+                "marker where name like '{0}' {1}",
+                pattern,
+                limitQuerySince == DateTime.MinValue ?
+                    string.Empty :
+                    "and date > '" + limitQuerySince.ToString(DATE_FORMAT) + "'");
+
+            return GetMostRecentLabelFromQuery(
+                restApi, repository, query, "find last label matching a pattern");
+        }
+
+        static Label GetMostRecentLabelFromQuery(RestApi restApi, string repository, string query, string actionDescription)
+        {
+            JArray findResult = restApi.Find(
+                repository,
+                query,
+                DATE_FORMAT,
+                actionDescription,
+                new string[] { "name", "date" });
+
+            Label result = null;
+
+            foreach (JObject obj in findResult)
+            {
+                if (obj["date"] == null)
+                    continue;
+
+                DateTime timestamp = obj["date"].Value<DateTime>();
+                string name = GetStringValue(obj, "name");
+
+                if (result == null)
+                {
+                    result = new Label(name, timestamp);
+                    continue;
+                }
+
+                if (timestamp < result.Date)
+                    continue;
+
+                result.Name = name;
+                result.Date = timestamp;
+            }
+
             return result;
         }
 

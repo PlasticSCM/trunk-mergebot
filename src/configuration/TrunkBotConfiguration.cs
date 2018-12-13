@@ -13,9 +13,15 @@ namespace TrunkBot.Configuration
         {
             internal readonly StatusProperty StatusAttribute;
 
-            internal PlasticSCM (StatusProperty statusAttribute)
+            internal readonly bool IsAutoLabelEnabled;
+            internal readonly string AutomaticLabelPattern;
+
+            internal PlasticSCM (
+                StatusProperty statusAttribute, bool bAutoLabelEnabled, string autoLabelPattern)
             {
                 StatusAttribute = statusAttribute;
+                IsAutoLabelEnabled = bAutoLabelEnabled;
+                AutomaticLabelPattern = autoLabelPattern;
             }
         }
 
@@ -44,12 +50,14 @@ namespace TrunkBot.Configuration
         internal class ContinuousIntegration
         {
             internal readonly string Plug;
-            internal readonly string Plan;
+            internal readonly string PlanBranch;
+            internal readonly string PlanAfterCheckin;
 
-            internal ContinuousIntegration(string plug, string plan)
+            internal ContinuousIntegration(string plug, string planBranch, string planAfterCheckin)
             {
                 Plug = plug;
-                Plan = plan;
+                PlanBranch = planBranch;
+                PlanAfterCheckin = planAfterCheckin;
             }
         }
 
@@ -137,8 +145,15 @@ namespace TrunkBot.Configuration
             if (jsonToken == null)
                 return null;
 
+            string automaticLabelPattern =
+                jsonToken["label_group"] == null ?
+                    string.Empty :
+                    GetPropertyValue(jsonToken["label_group"], "pattern");
+
             return new PlasticSCM(
-                BuildStatusProperty(jsonToken["status_attribute_group"]));
+                BuildStatusProperty(jsonToken["status_attribute_group"]),
+                GetBoolValue(jsonToken["label_group"], "is_enabled", false),
+                automaticLabelPattern);
         }
 
         static IssueTracker BuildIssueTracker(JToken jsonToken)
@@ -165,7 +180,8 @@ namespace TrunkBot.Configuration
 
             return new ContinuousIntegration(
                 GetPropertyValue(jsonToken, "plug"),
-                GetPropertyValue(jsonToken, "plan"));
+                GetPropertyValue(jsonToken, "plan"),
+                GetPropertyValue(jsonToken, "planAfterCheckin"));
         }
 
         static Notifier BuildNotifier(JToken jsonToken)
@@ -213,12 +229,54 @@ namespace TrunkBot.Configuration
 
         static string GetPropertyValue(JToken jsonToken, string key)
         {
+            if (jsonToken == null)
+                return null;
+
             JToken jsonProperty = jsonToken[key];
 
             if (jsonProperty == null)
                 return null;
 
             return jsonProperty.Value<string>();
+        }
+
+        static bool GetBoolValue(JToken jsonToken, string key, bool defaultValue)
+        {
+            if (jsonToken == null)
+                return defaultValue;
+
+            JToken jsonProperty = jsonToken[key];
+
+            if (jsonProperty == null)
+                return defaultValue;
+
+            bool fieldValue = false;
+
+            if (jsonProperty.Type == JTokenType.Boolean)
+            {
+                fieldValue = jsonProperty.Value<bool>();
+                return fieldValue;
+            }
+
+            if (jsonProperty.Type != JTokenType.String)
+                throw new NotSupportedException(
+                    string.Format("Value {0} is not supported", jsonProperty.ToString()));
+
+            string valueStr = jsonProperty.Value<string>();
+            if ("yes".Equals(valueStr, StringComparison.OrdinalIgnoreCase))
+            {
+                fieldValue = true;
+                return fieldValue;
+            }
+
+            if ("no".Equals(valueStr, StringComparison.OrdinalIgnoreCase))
+            {
+                fieldValue = false;
+                return false;
+            }
+
+            throw new NotSupportedException(
+                string.Format("Value {0} is not supported", valueStr));
         }
 
         TrunkBotConfiguration(

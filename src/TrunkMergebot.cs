@@ -32,7 +32,7 @@ namespace TrunkBot
 
         internal void LoadBranchesToProcess()
         {
-            mLog.Info("Get branches to process...");
+            mLog.Info("Retrieving branches to process...");
 
             List<Branch> branches = FindQueries.FindResolvedBranches(
                 mRestApi,
@@ -107,13 +107,13 @@ namespace TrunkBot
 
                 if (result == ProcessBranch.Result.Ok)
                 {
-                    mLog.InfoFormat("Branch {0} process completed.", branch.FullName);
+                    mLog.InfoFormat("Branch {0} processing completed.", branch.FullName);
                     continue;
                 }
 
                 if (result == ProcessBranch.Result.Failed)
                 {
-                    mLog.InfoFormat("Branch {0} process failed.", branch.FullName);
+                    mLog.InfoFormat("Branch {0} processing failed.", branch.FullName);
                     continue;
                 }
 

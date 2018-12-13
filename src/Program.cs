@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 using log4net;
 using log4net.Config;
@@ -14,13 +16,16 @@ namespace TrunkBot
     {
         static int Main(string[] args)
         {
+            string botName = null;
             try
             {
                 TrunkBotArguments botArgs = new TrunkBotArguments(args);
 
                 bool bValidArgs = botArgs.Parse();
+                botName = botArgs.BotName;
 
-                ConfigureLogging(botArgs.BotName);
+                ConfigureLogging(botName);
+                mLog.InfoFormat("TrunkBot [{0}] started.", botName);
 
                 string argsStr = args == null ? string.Empty : string.Join(" ", args);
                 mLog.DebugFormat("Args: [{0}]. Are valid args?: [{1}]", argsStr, bValidArgs);
@@ -28,6 +33,19 @@ namespace TrunkBot
                 if (!bValidArgs || botArgs.ShowUsage)
                 {
                     PrintUsage();
+                    if (botArgs.ShowUsage)
+                    {
+                        mLog.InfoFormat(
+                            "TrunkBot [{0}] is going to finish: " +
+                                "user explicitly requested to show usage.",
+                            botName);
+                        return 0;
+                    }
+
+                    mLog.ErrorFormat(
+                        "TrunkBot [{0}] is going to finish: " +
+                            "invalid arguments found in command line.",
+                        botName);
                     return 0;
                 }
 
@@ -36,6 +54,9 @@ namespace TrunkBot
                         botArgs, out errorMessage))
                 {
                     Console.WriteLine(errorMessage);
+                    mLog.ErrorFormat(
+                        "TrunkBot [{0}] is going to finish: error found on argument check",
+                        botName);
                     mLog.Error(errorMessage);
                     return 1;
                 }
@@ -48,6 +69,9 @@ namespace TrunkBot
                         botConfig, out errorMessage))
                 {
                     Console.WriteLine(errorMessage);
+                    mLog.ErrorFormat(
+                        "TrunkBot [{0}] is going to finish: error found on argument check",
+                        botName);
                     mLog.Error(errorMessage);
                     return 1;
                 }
@@ -58,17 +82,22 @@ namespace TrunkBot
                     botArgs.WebSocketUrl,
                     botArgs.RestApiUrl,
                     botConfig,
-                    ToolConfig.GetBranchesFile(
-                        GetEscapedBotName(botArgs.BotName)),
-                    botArgs.BotName,
+                    ToolConfig.GetBranchesFile(GetEscapedBotName(botName)),
+                    botName,
                     botArgs.ApiKey);
+
+                mLog.InfoFormat(
+                    "TrunkBot [{0}] is going to finish: orderly shutdown.",
+                    botName);
 
                 return 0;
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
-                mLog.ErrorFormat("Error: {0}", e.Message);
+                mLog.FatalFormat(
+                    "TrunkBot [{0}] is going to finish: uncaught exception " +
+                    "thrown during execution. Message: {1}", botName, e.Message);
                 mLog.DebugFormat("StackTrace: {0}", e.StackTrace);
                 return 1;
             }
@@ -82,15 +111,26 @@ namespace TrunkBot
             string botName,
             string apiKey)
         {
-            if(!Directory.Exists(Path.GetDirectoryName(branchesQueueFilePath)))
+            if (!Directory.Exists(Path.GetDirectoryName(branchesQueueFilePath)))
                 Directory.CreateDirectory(Path.GetDirectoryName(branchesQueueFilePath));
 
             TrunkMergebot trunkBot = new TrunkMergebot(
                 restApiUrl,  botConfig, branchesQueueFilePath, botName);
 
-            trunkBot.LoadBranchesToProcess();
+            try
+            {
+                trunkBot.LoadBranchesToProcess();
+            }
+            catch (Exception e)
+            {
+                mLog.FatalFormat(
+                    "TrunkBot [{0}] is going to finish because it couldn't load " +
+                    "the branches to process on startup. Reason: {1}", botName, e.Message);
+                mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, e.StackTrace);
+                throw;
+            }
 
-            System.Threading.ThreadPool.QueueUserWorkItem(trunkBot.ProcessBranches);
+            ThreadPool.QueueUserWorkItem(trunkBot.ProcessBranches);
 
             WebSocketClient ws = new WebSocketClient(
                 webSocketUrl,
@@ -100,7 +140,7 @@ namespace TrunkBot
 
             ws.ConnectWithRetries();
 
-            System.Threading.Tasks.Task.Delay(-1).Wait();
+            Task.Delay(-1).Wait();
         }
 
         static void ConfigureServicePoint()

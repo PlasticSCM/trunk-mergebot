@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="api\ApiUris.cs" />
     <Compile Include="api\requests\ChangeAttributeRequest.cs" />
+    <Compile Include="api\requests\CreateLabelRequest.cs" />
     <Compile Include="api\requests\LaunchPlanRequest.cs" />
     <Compile Include="api\requests\MergeReport.cs" />
     <Compile Include="api\requests\MergeToRequest.cs" />
@@ -60,6 +61,7 @@
     <Compile Include="api\responses\MergeToResponse.cs" />
     <Compile Include="api\responses\SingleResponse.cs" />
     <Compile Include="api\RestApi.cs" />
+    <Compile Include="labeling\AutomaticLabeler.cs" />
     <Compile Include="Branch.cs" />
     <Compile Include="BranchesQueueStorage.cs" />
     <Compile Include="BranchSpec.cs" />
@@ -69,9 +71,14 @@
     <Compile Include="configuration\TrunkBotConfiguration.cs" />
     <Compile Include="configuration\TrunkBotConfigurationChecker.cs" />
     <Compile Include="FindQueries.cs" />
+    <Compile Include="labeling\Label.cs" />
+    <Compile Include="labeling\AutomaticLabeler.NewLabelNameGenerator.cs" />
+    <Compile Include="labeling\AutomaticLabeler.PatternTranslator.cs" />
+    <Compile Include="labeling\AutomaticLabeler.Tokens.cs" />
     <Compile Include="MergeToOperations.cs" />
     <Compile Include="messages\ParseBuildProperties.cs" />
     <Compile Include="messages\ParseEvent.cs" />
+    <Compile Include="Notifier.cs" />
     <Compile Include="ParseUserProfile.cs" />
     <Compile Include="ProcessBranch.cs" />
     <Compile Include="Program.cs" />

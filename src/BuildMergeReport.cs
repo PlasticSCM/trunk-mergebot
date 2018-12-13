@@ -25,7 +25,7 @@ namespace TrunkBot
             MergeReport.Entry issueProperty = new MergeReport.Entry();
             issueProperty.Text = issueTitle;
             issueProperty.Link = issueLink;
-            issueProperty.Type = "issuetracker";
+            issueProperty.Type = ISSUETRACKER_TYPE;
 
             mergeReport.Properties.Add(issueProperty);
         }
@@ -35,7 +35,7 @@ namespace TrunkBot
         {
             MergeReport.Entry failedMergeProperty = new MergeReport.Entry();
             failedMergeProperty.Text = GetMergeToResultStatus(status);
-            failedMergeProperty.Type = "merge_failed";
+            failedMergeProperty.Type = MERGE_FAILED_TYPE;
             failedMergeProperty.Value = message;
 
             mergeReport.Properties.Add(failedMergeProperty);
@@ -46,7 +46,7 @@ namespace TrunkBot
         {
             MergeReport.Entry succeededMergeProperty = new MergeReport.Entry();
             succeededMergeProperty.Text = GetMergeToResultStatus(status);
-            succeededMergeProperty.Type = "merge_ok";
+            succeededMergeProperty.Type = MERGE_OK_TYPE;
 
             mergeReport.Properties.Add(succeededMergeProperty);
         }
@@ -55,7 +55,7 @@ namespace TrunkBot
             MergeReport mergeReport, MergeToResultStatus status, int csetId)
         {
             MergeReport.Entry mergeProperty = FindPropertyByType(
-                mergeReport.Properties, "merge_ok");
+                mergeReport.Properties, MERGE_OK_TYPE);
 
             if (mergeProperty == null)
                 return;
@@ -63,11 +63,28 @@ namespace TrunkBot
             if (csetId == -1)
             {
                 mergeProperty.Text = GetMergeToResultStatus(status);
-                mergeProperty.Type = "merge_failed";
+                mergeProperty.Type = MERGE_FAILED_TYPE;
                 return;
             }
 
             mergeProperty.Value = csetId.ToString();
+        }
+
+        internal static void AddLabelProperty(
+            MergeReport mergeReport,
+            bool isSuccessfulOperation,
+            string labelName,
+            string message)
+        {
+            MergeReport.Entry labelActionProperty = new MergeReport.Entry();
+            labelActionProperty.Text = string.Format(
+                "label {0} ({1})", isSuccessfulOperation ? "ok" : "ko", labelName);
+            labelActionProperty.Value = message;
+            labelActionProperty.Type = isSuccessfulOperation ?
+                LABEL_OK_TYPE :
+                LABEL_FAILED_TYPE;
+
+            mergeReport.Properties.Add(labelActionProperty);
         }
 
         internal static void AddFailedBuildProperty(
@@ -76,7 +93,7 @@ namespace TrunkBot
             MergeReport.Entry failedBuildProperty = new MergeReport.Entry();
             failedBuildProperty.Text = string.Format(
                 "build ko (plan: {0})", planBranch);
-            failedBuildProperty.Type = "build_failed";
+            failedBuildProperty.Type = BUILD_FAILED_TYPE;
             failedBuildProperty.Value = message;
 
             mergeReport.Properties.Add(failedBuildProperty);
@@ -88,7 +105,7 @@ namespace TrunkBot
             MergeReport.Entry succeededBuildProperty = new MergeReport.Entry();
             succeededBuildProperty.Text = string.Format(
                 "build ok (plan: {0})", planBranch);
-            succeededBuildProperty.Type = "build_ok";
+            succeededBuildProperty.Type = BUILD_OK_TYPE;
 
             mergeReport.Properties.Add(succeededBuildProperty);
         }
@@ -100,12 +117,12 @@ namespace TrunkBot
                 return;
 
             MergeReport.Entry failedBuildProperty = FindPropertyByType(
-                mergeReport.Properties, "build_failed");
+                mergeReport.Properties, BUILD_FAILED_TYPE);
 
             if (failedBuildProperty == null)
             {
                 failedBuildProperty = new MergeReport.Entry();
-                failedBuildProperty.Type = "build_failed";
+                failedBuildProperty.Type = BUILD_FAILED_TYPE;
                 mergeReport.Properties.Add(failedBuildProperty);
             }
 
@@ -172,5 +189,13 @@ namespace TrunkBot
             double totalMinutes = TimeSpan.FromMilliseconds(milliseconds).TotalMinutes;
             return Math.Round(totalMinutes, 2);
         }
+
+        const string BUILD_FAILED_TYPE = "build_failed";
+        const string BUILD_OK_TYPE = "build_ok";
+        const string MERGE_FAILED_TYPE = "merge_failed";
+        const string MERGE_OK_TYPE = "merge_ok";
+        const string LABEL_FAILED_TYPE = "label_failed";
+        const string LABEL_OK_TYPE = "label_ok";
+        const string ISSUETRACKER_TYPE = "issuetracker";
     }
 }

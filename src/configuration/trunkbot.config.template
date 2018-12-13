@@ -72,7 +72,27 @@
             "description":"Value of specified status attribute that means a branch task was successfully processed and it was merged to the specified trunk branch (e.g. 'merged')."
           }
         ]
-      }
+      },
+      {
+        "name":"label_group",
+        "displayName":"Automatic labeling",
+        "type":"group",
+        "description":"Label the changeset after a successful merge",
+        "items":[
+          {
+            "name":"is_enabled",
+            "displayName":"Enable automatic labeling",
+            "type":"bool",
+            "description":"The mergebot will label the changeset created during the merge. It can use 2 options: number autoincrement, and dates."
+          },
+          {
+            "name":"pattern",
+            "displayName":"Label pattern",
+            "type":"string",
+            "description":"Option 1: ${AUTO_INCREMENT_NUMBER}, Option 2: ${BUILD_DATE_FORMATTED, <a_valid_date_format>}. Example: 'LABEL.${AUTO_INCREMENT_NUMBER}_${BUILD_DATE_FORMATTED, yyyy-MM-dd}' will create LABEL.128.2018-10-23. Nested variables are not allowed. Go to the 'Learn more' section for more info."
+          }
+		]
+	  }
     ]
   },
   {
@@ -153,9 +173,15 @@
       },
       {
         "name":"plan",
-        "displayName":"Plan",
+        "displayName":"Plan for build & test a branch",
         "type":"string",
         "description":"The name of the plan to run to test a task."
+      },
+      {
+        "name":"planAfterCheckin",
+        "displayName":"Plan to run after checking-in a branch",
+        "type":"string",
+        "description":"The name of the plan to run after successful checkin of a branch in specified trunk branch (e.g. Use this plan to deploy your code). Leave this field empty if you don't want to run any plan after checkin."
       }
     ]
   },

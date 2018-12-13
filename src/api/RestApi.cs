@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -21,6 +20,7 @@ namespace TrunkBot.Api
         internal IssuesApi Issues { get; private set; }
         internal NotifyApi Notify { get; private set; }
         internal CIApi CI { get; private set; }
+        internal LabelApi Labels { get; private set; }
 
         internal RestApi(string serverUrl, string apiKey)
         {
@@ -32,6 +32,7 @@ namespace TrunkBot.Api
             Issues = new IssuesApi(mBaseUri, apiKey);
             Notify = new NotifyApi(mBaseUri, apiKey);
             CI = new CIApi(mBaseUri, apiKey);
+            Labels = new LabelApi(mBaseUri, apiKey);
         }
 
         internal BranchModel GetBranch(
@@ -41,8 +42,10 @@ namespace TrunkBot.Api
                 mBaseUri, ApiEndpoints.GetBranch,
                 repoName, FormatTargetName(branchName));
 
+            string actionDescription = string.Format(
+                "get info of branch br:{0}@{1}", branchName, repoName);
             return Internal.MakeApiRequest<BranchModel>(
-                endpoint, HttpMethod.Get, mApiKey);
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
         internal ChangesetModel GetChangeset(string repoName, int changesetId)
@@ -50,20 +53,31 @@ namespace TrunkBot.Api
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.GetChangeset, repoName, changesetId.ToString());
 
+            string actionDescription = string.Format(
+                "get info of changeset cs:{0}@{1}", changesetId, repoName);
             return Internal.MakeApiRequest<ChangesetModel>(
-                endpoint, HttpMethod.Get, mApiKey);
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
         internal SingleResponse GetAttribute(
-            string repoName, string attributeName, AttributeTargetType targetType, string targetName)
+            string repoName,
+            string attributeName,
+            AttributeTargetType targetType,
+            string targetName)
         {
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.GetAttribute,
                 repoName, attributeName, targetType.ToString(),
                 FormatTargetName(targetName));
 
+            string actionDescription = string.Format(
+                "get value of attribute '{0}@{1}' applied to {2} '{3}'",
+                attributeName,
+                repoName,
+                targetType,
+                targetName);
             return Internal.MakeApiRequest<SingleResponse>(
-                endpoint, HttpMethod.Get, mApiKey);
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
         internal void ChangeAttribute(
@@ -73,8 +87,15 @@ namespace TrunkBot.Api
                 mBaseUri, ApiEndpoints.ChangeAttribute,
                 repoName, attributeName);
 
+            string actionDescription = string.Format(
+                "set attribute '{0}@{1}' applied to {2} '{3}' to value '{4}'",
+                attributeName,
+                repoName,
+                request.TargetType,
+                request.TargetName,
+                request.Value);
             Internal.MakeApiRequest<ChangeAttributeRequest>(
-                endpoint, HttpMethod.Put, request, mApiKey);
+                endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
         }
 
         internal MergeToResponse MergeTo(
@@ -83,8 +104,13 @@ namespace TrunkBot.Api
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.MergeTo, repoName);
 
+            string actionDescription = string.Format(
+                "merge from {0} '{1}' to '{2}'",
+                request.SourceType,
+                request.Source,
+                request.Destination);
             return Internal.MakeApiRequest<MergeToRequest, MergeToResponse>(
-                endpoint, HttpMethod.Post, request, mApiKey);
+                endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
         }
 
         internal void DeleteShelve(string repoName, int shelveId)
@@ -93,12 +119,18 @@ namespace TrunkBot.Api
                 mBaseUri, ApiEndpoints.DeleteShelve,
                 repoName, shelveId.ToString());
 
+            string actionDescription = string.Format(
+                "delete shelve sh:{0}@{1}", shelveId, repoName);
             Internal.MakeApiRequest(
-                endpoint, HttpMethod.Delete, mApiKey);
+                endpoint, HttpMethod.Delete, actionDescription, mApiKey);
         }
 
         internal JArray Find(
-            string repoName, string query, string queryDateFormat, string[] fields)
+            string repoName,
+            string query,
+            string queryDateFormat,
+            string actionDescription,
+            string[] fields)
         {
             string fieldsQuery = string.Empty;
             if (fields != null && fields.Length > 0)
@@ -108,7 +140,7 @@ namespace TrunkBot.Api
                 mBaseUri, ApiEndpoints.Find, repoName, query, queryDateFormat, fieldsQuery);
 
             return Internal.MakeApiRequest<JArray>(
-                endpoint, HttpMethod.Get, mApiKey);
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
         static string FormatTargetName(string targetName)
@@ -137,8 +169,10 @@ namespace TrunkBot.Api
                 Uri endpoint = ApiUris.GetFullUri(
                     mBaseUri, ApiEndpoints.Users.GetUserProfile, name);
 
+                string actionDescriptions = string.Format(
+                    "get profile of user '{0}'", name);
                 return Internal.MakeApiRequest<JObject>(
-                    endpoint, HttpMethod.Get, mApiKey);
+                    endpoint, HttpMethod.Get, actionDescriptions, mApiKey);
             }
 
             readonly Uri mBaseUri;
@@ -160,8 +194,12 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.MergeReports.ReportMerge,
                     mergebotName);
 
+                string actionDescription = string.Format(
+                    "upload merge report of br:{0} (repo ID: {1})",
+                    mergeReport.BranchId,
+                    mergeReport.RepositoryId);
                 Internal.MakeApiRequest<MergeReport>(
-                    endpoint, HttpMethod.Put, mergeReport, mApiKey);
+                    endpoint, HttpMethod.Put, mergeReport, actionDescription, mApiKey);
             }
 
             readonly Uri mBaseUri;
@@ -183,8 +221,10 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.Issues.IsConnected,
                     issueTrackerName);
 
+                string actionDescription = string.Format(
+                    "test connection to '{0}'", issueTrackerName);
                 return Internal.MakeApiRequest<SingleResponse>(
-                    endpoint, HttpMethod.Get, mApiKey);
+                    endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
             internal SingleResponse GetIssueUrl(
@@ -194,8 +234,11 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.Issues.GetIssueUrl,
                     issueTrackerName, projectKey, taskNumber);
 
+                string actionDescription = string.Format(
+                    "get URL of issue {0}-{1} in {2}",
+                    projectKey, taskNumber, issueTrackerName);
                 return Internal.MakeApiRequest<SingleResponse>(
-                    endpoint, HttpMethod.Get, mApiKey);
+                    endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
             internal SingleResponse GetIssueField(
@@ -205,8 +248,11 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.Issues.GetIssueField,
                     issueTrackerName, projectKey, taskNumber, fieldName);
 
+                string actionDescription = string.Format(
+                    "get field '{0}' of issue {1}-{2} in {3}",
+                    fieldName, projectKey, taskNumber, issueTrackerName);
                 return Internal.MakeApiRequest<SingleResponse>(
-                    endpoint, HttpMethod.Get, mApiKey);
+                    endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
             internal SingleResponse SetIssueField(
@@ -217,8 +263,11 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.Issues.SetIssueField,
                     issueTrackerName, projectKey, taskNumber, fieldName);
 
+                string actionDescription = string.Format(
+                    "set field '{0}' of issue {1}-{2} in {3} to value '{4}'",
+                    fieldName, projectKey, taskNumber, issueTrackerName, request.NewValue);
                 return Internal.MakeApiRequest<SetIssueFieldRequest, SingleResponse>(
-                    endpoint, HttpMethod.Put, request, mApiKey);
+                    endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
             }
 
             readonly Uri mBaseUri;
@@ -240,8 +289,10 @@ namespace TrunkBot.Api
                     mBaseUri, ApiEndpoints.Notify.NotifyMessage,
                     notifierName);
 
+                string actionDescription = string.Format(
+                    "send message to '{0}'", string.Join(", ", request.Recipients));
                 Internal.MakeApiRequest<NotifyMessageRequest>(
-                    endpoint, HttpMethod.Post, request, mApiKey);
+                    endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
             }
 
             readonly Uri mBaseUri;
@@ -264,7 +315,7 @@ namespace TrunkBot.Api
                     ciName, planName);
 
                 return Internal.MakeApiRequest<LaunchPlanRequest, SingleResponse>(
-                    endpoint, HttpMethod.Post, request, mApiKey);
+                    endpoint, HttpMethod.Post, request, "launch CI plan", mApiKey);
             }
 
             internal GetPlanStatusResponse GetPlanStatus(
@@ -275,59 +326,93 @@ namespace TrunkBot.Api
                     ciName, planName, buildId);
 
                 return Internal.MakeApiRequest<GetPlanStatusResponse>(
-                    endpoint, HttpMethod.Get, mApiKey);
+                    endpoint, HttpMethod.Get, "retrieve CI plan status", mApiKey);
             }
 
             readonly Uri mBaseUri;
             readonly string mApiKey;
         }
 
+        internal class LabelApi
+        {
+            internal LabelApi(Uri baseUri, string apiKey)
+            {
+                mBaseUri = baseUri;
+                mApiKey = apiKey;
+            }
+            readonly Uri mBaseUri;
+            readonly string mApiKey;
+
+            internal void Create(string repository, CreateLabelRequest req)
+            {
+                Uri endpoint = ApiUris.GetFullUri(
+                    mBaseUri, ApiEndpoints.Labels.Create, repository);
+
+                Internal.MakeApiRequest<CreateLabelRequest>(
+                    endpoint, HttpMethod.Post, req, "create label " + req.Name, mApiKey);
+            }
+        }
+
         static class Internal
         {
             internal static void MakeApiRequest(
-                Uri endpoint, HttpMethod httpMethod, string apiKey)
+                Uri endpoint, HttpMethod httpMethod, string actionDescription, string apiKey)
             {
                 try
                 {
                     HttpWebRequest request = CreateWebRequest(
                         endpoint, httpMethod, apiKey);
 
-                    ConsumeResponse(request);
+                    GetResponse(request);
                 }
                 catch (WebException ex)
                 {
-                    throw WebServiceException.AdaptException(endpoint, ex);
+                    throw WebServiceException.AdaptException(ex, actionDescription, endpoint);
                 }
                 catch (Exception ex)
                 {
-                    LogException(endpoint, ex.Message, ex.StackTrace);
+                    LogException(
+                        actionDescription,
+                        ex.Message,
+                        ex.StackTrace,
+                        endpoint,
+                        HttpStatusCode.OK);
                     throw;
                 }
             }
 
             internal static void MakeApiRequest<TReq>(
-                Uri endpoint, HttpMethod httpMethod, TReq body, string apiKey)
+                Uri endpoint,
+                HttpMethod httpMethod,
+                TReq body,
+                string actionDescription,
+                string apiKey)
             {
                 try
                 {
                     HttpWebRequest request = CreateWebRequest<TReq>(
                         endpoint, httpMethod, body, apiKey);
 
-                    ConsumeResponse(request);
+                    GetResponse(request);
                 }
                 catch (WebException ex)
                 {
-                    throw WebServiceException.AdaptException(endpoint, ex);
+                    throw WebServiceException.AdaptException(ex, actionDescription, endpoint);
                 }
                 catch (Exception ex)
                 {
-                    LogException(endpoint, ex.Message, ex.StackTrace);
+                    LogException(
+                        actionDescription,
+                        ex.Message,
+                        ex.StackTrace,
+                        endpoint,
+                        HttpStatusCode.OK);
                     throw;
                 }
             }
 
             internal static TRes MakeApiRequest<TRes>(
-                Uri endpoint, HttpMethod httpMethod, string apiKey)
+                Uri endpoint, HttpMethod httpMethod, string actionDescription, string apiKey)
             {
                 try
                 {
@@ -338,17 +423,26 @@ namespace TrunkBot.Api
                 }
                 catch (WebException ex)
                 {
-                    throw WebServiceException.AdaptException(endpoint, ex);
+                    throw WebServiceException.AdaptException(ex, actionDescription, endpoint);
                 }
                 catch (Exception ex)
                 {
-                    LogException(endpoint, ex.Message, ex.StackTrace);
+                    LogException(
+                        actionDescription,
+                        ex.Message,
+                        ex.StackTrace,
+                        endpoint,
+                        HttpStatusCode.OK);
                     throw;
                 }
             }
 
             internal static TRes MakeApiRequest<TReq, TRes>(
-                Uri endpoint, HttpMethod httpMethod, TReq body, string apiKey)
+                Uri endpoint,
+                HttpMethod httpMethod,
+                TReq body,
+                string actionDescription,
+                string apiKey)
             {
                 try
                 {
@@ -359,11 +453,11 @@ namespace TrunkBot.Api
                 }
                 catch (WebException ex)
                 {
-                    throw WebServiceException.AdaptException(endpoint, ex);
+                    throw WebServiceException.AdaptException(ex, actionDescription, endpoint);
                 }
                 catch (Exception ex)
                 {
-                    LogException(endpoint, ex.Message, ex.StackTrace);
+                    LogException(actionDescription, ex.Message, ex.StackTrace, endpoint, HttpStatusCode.OK);
                     throw;
                 }
             }
@@ -416,32 +510,70 @@ namespace TrunkBot.Api
                 }
             }
 
-            static void ConsumeResponse(WebRequest request)
+            static void GetResponse(WebRequest request)
             {
-                using (WebResponse response = request.GetResponse())
-                {
-                    // Discard the response body
-                }
+                using (WebResponse response = request.GetResponse()) ;
             }
         }
 
-        static void LogException(Uri endpoint, string message, string stackTrace)
+        static void LogException(
+            string actionDescription,
+            string errorMessage,
+            string stackTrace,
+            Uri endpoint,
+            HttpStatusCode statusCode)
         {
-            mLog.ErrorFormat("There was an error while calling '{0}': {1}", endpoint, message);
-            mLog.DebugFormat("StackTrace:{0}{1}", Environment.NewLine, stackTrace);
+            mLog.ErrorFormat(
+                "Unable to {0}. The server returned: {1}. {2}",
+                actionDescription,
+                errorMessage,
+                GetStatusCodeDetails(statusCode));
+
+            mLog.DebugFormat("Endpoint URI: {0}", endpoint);
+            mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, stackTrace);
+        }
+
+        static string GetStatusCodeDetails(HttpStatusCode statusCode)
+        {
+            switch (statusCode)
+            {
+                case HttpStatusCode.Unauthorized:
+                    return "Please check that the User API Key assigned to the bot is " +
+                        "correct and the associated user has enough permissions.";
+                case HttpStatusCode.InternalServerError:
+                    return "Please check the Plastic SCM Server log.";
+                case HttpStatusCode.NotFound:
+                    return "The requested element doesn't exist.";
+                case HttpStatusCode.BadRequest:
+                    return "The server couldn't understand the request data.";
+                default:
+                    return string.Empty;
+            }
         }
 
         static class WebServiceException
         {
-            internal static Exception AdaptException(Uri endpoint, WebException ex)
+            internal static Exception AdaptException(
+                WebException ex, string actionDescription, Uri endpoint)
             {
-                string message = GetExceptionMessage(endpoint, ex);
-                LogException(endpoint, message, ex.StackTrace);
+                string message = GetExceptionMessage(ex, endpoint);
+                LogException(
+                    actionDescription,
+                    message,
+                    ex.StackTrace,
+                    endpoint,
+                    GetStatusCode(ex.Response));
 
                 return new Exception(message);
             }
 
-            static string GetExceptionMessage(Uri endpoint, WebException ex)
+            static HttpStatusCode GetStatusCode(WebResponse exceptionResponse)
+            {
+                HttpWebResponse httpResponse = exceptionResponse as HttpWebResponse;
+                return httpResponse != null ? httpResponse.StatusCode : HttpStatusCode.OK;
+            }
+
+            static string GetExceptionMessage(WebException ex, Uri endpoint)
             {
                 HttpWebResponse response = ex.Response as HttpWebResponse;
                 if (response == null)
@@ -449,18 +581,18 @@ namespace TrunkBot.Api
 
                 try
                 {
-                    return ReadErrorMessageFromRespose(response);
+                    return ReadErrorMessageFromResponse(response);
                 }
                 catch (Exception e)
                 {
-                    mLog.ErrorFormat(
-                        "There was an error reading the exception error " +
-                        "message for request '{0}'. Error: {1} ", endpoint, e.Message);
+                    mLog.ErrorFormat("Unable to read the error response: {0}", e.Message);
+                    mLog.DebugFormat("Endpoint: {0}", endpoint);
+                    mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, e.StackTrace);
                     return ex.Message;
                 }
             }
 
-            static string ReadErrorMessageFromRespose(HttpWebResponse response)
+            static string ReadErrorMessageFromResponse(HttpWebResponse response)
             {
                 using (StreamReader resultStream =
                     new StreamReader(response.GetResponseStream()))

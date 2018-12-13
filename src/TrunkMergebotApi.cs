@@ -13,6 +13,22 @@ namespace TrunkBot
 {
     internal class TrunkMergebotApi
     {
+        internal static class Labels
+        {
+            internal static void Create(
+                RestApi restApi, string repoName, string labelName, int csetId, string comment)
+            {
+                CreateLabelRequest request = new CreateLabelRequest()
+                {
+                    Name = labelName,
+                    Changeset = csetId,
+                    Comment = comment
+                };
+
+                restApi.Labels.Create(repoName, request);
+            }
+        }
+
         internal static class Users
         {
             internal static JObject GetUserProfile(RestApi restApi, string userName)
@@ -269,9 +285,10 @@ namespace TrunkBot
             string repName,
             string query,
             string queryDateFormat,
+            string actionDescription,
             string[] fields)
         {
-            return restApi.Find(repName, query, queryDateFormat, fields);
+            return restApi.Find(repName, query, queryDateFormat, actionDescription, fields);
         }
 
         internal static void DeleteShelve(

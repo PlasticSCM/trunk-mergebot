@@ -22,6 +22,7 @@ namespace TrunkBot.WebSockets
             mWebSocket = new WebSocket(serverUrl);
             mWebSocket.OnMessage += OnMessage;
             mWebSocket.OnClose += OnClose;
+            mWebSocket.OnError += OnError;
             mWebSocket.Log.Output = LogOutput;
             mWebSocket.SslConfiguration.ServerCertificateValidationCallback += CertificateValidation;
 
@@ -75,6 +76,13 @@ namespace TrunkBot.WebSockets
         void OnMessage(object sender, MessageEventArgs e)
         {
             ThreadPool.QueueUserWorkItem(new WaitCallback(mProcessMessage), e.Data);
+        }
+
+        void OnError(object sender, ErrorEventArgs e)
+        {
+            mLog.ErrorFormat("WebSocket connection error: {0}", e.Message);
+            mLog.DebugFormat(
+                "Stack trace:{0}{1}", Environment.NewLine, e.Exception.StackTrace);
         }
 
         static void LogOutput(LogData arg1, string arg2)

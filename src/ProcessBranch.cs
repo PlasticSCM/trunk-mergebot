@@ -6,6 +6,7 @@ using TrunkBot.Api;
 using TrunkBot.Api.Requests;
 using TrunkBot.Api.Responses;
 using TrunkBot.Configuration;
+using TrunkBot.Labeling;
 using TrunkBot.Messages;
 
 namespace TrunkBot
@@ -42,9 +43,12 @@ namespace TrunkBot
 
                 string taskTittle;
                 string taskUrl;
+
                 if (GetIssueInfo(restApi, taskNumber, botConfig.Issues,
                         out taskTittle, out taskUrl))
+                {
                     BuildMergeReport.AddIssueProperty(mergeReport, taskTittle, taskUrl);
+                }
 
                 string comment = GetComment(branch.FullName, taskTittle, botName);
 
@@ -85,11 +89,43 @@ namespace TrunkBot
                         branch.FullName,
                         botConfig.TrunkBranch),
                     botConfig);
+
+                string labelName = string.Empty;
+                if (!CreateLabel(
+                    restApi,
+                    csetId,
+                    branch.FullName,
+                    botConfig.TrunkBranch,
+                    botConfig.Repository,
+                    botConfig.Plastic.IsAutoLabelEnabled,
+                    botConfig.Plastic.AutomaticLabelPattern,
+                    mergeReport,
+                    branch.Owner,
+                    botConfig.Notifications,
+                    out labelName))
+                {
+                    return Result.Failed;
+                }
+                    
+                if (string.IsNullOrEmpty(botConfig.CI.PlanAfterCheckin))
+                    return Result.Ok;
+
+                if (!TryRunAfterCheckinPlan(
+                        restApi,
+                        branch,
+                        mergeReport,
+                        taskNumber,
+                        csetId,
+                        labelName,
+                        botConfig))
+                {
+                        return Result.Failed;
+                }
             }
             catch (Exception ex)
             {
                 mLog.ErrorFormat(
-                    "Try process task {0} failed for branch {1}: {2}",
+                    "The attempt to process task {0} failed for branch {1}: {2}",
                     taskNumber, branch.FullName, ex.Message);
 
                 mLog.DebugFormat(
@@ -137,12 +173,12 @@ namespace TrunkBot
                 "Building branch {0}", branch.FullName);
 
             BuildProperties properties = CreateBuildProperties(
-                restApi, taskNumber, branch.FullName, botConfig);
+                restApi, taskNumber, branch.FullName, string.Empty, botConfig);
 
             int iniTime = Environment.TickCount;
 
             TrunkMergebotApi.CI.PlanResult buildResult = TrunkMergebotApi.CI.Build(
-                restApi, botConfig.CI.Plug, botConfig.CI.Plan,
+                restApi, botConfig.CI.Plug, botConfig.CI.PlanBranch,
                 scmSpecToSwitchTo, comment, properties);
 
             BuildMergeReport.AddBuildTimeProperty(mergeReport,
@@ -150,13 +186,13 @@ namespace TrunkBot
 
             if (buildResult.Succeeded)
             {
-                BuildMergeReport.AddSucceededBuildProperty(mergeReport, botConfig.CI.Plan);
+                BuildMergeReport.AddSucceededBuildProperty(mergeReport, botConfig.CI.PlanBranch);
 
                 return true;
             }
 
             BuildMergeReport.AddFailedBuildProperty(mergeReport,
-                botConfig.CI.Plan, buildResult.Explanation);
+                botConfig.CI.PlanBranch, buildResult.Explanation);
 
             ChangeTaskStatus.SetTaskAsFailed(
                 restApi,
@@ -170,6 +206,126 @@ namespace TrunkBot
 
             return false;
         }
+
+        static bool CreateLabel(
+            RestApi restApi, 
+            int csetId, 
+            string branchFullName,
+            string trunkBranchName,
+            string repository, 
+            bool isAutoLabelEnabled, 
+            string automaticLabelPattern,
+            MergeReport mergeReport,
+            string branchOwner,
+            TrunkBotConfiguration.Notifier notificationsConfig,
+            out string labelCreated)
+        {
+            labelCreated = string.Empty;
+
+            if (!isAutoLabelEnabled)
+                return true;
+
+            if (string.IsNullOrEmpty(automaticLabelPattern))
+                return true;
+
+            AutomaticLabeler.Result result = null;
+            try
+            {
+                result = AutomaticLabeler.CreateLabel(
+                    restApi, csetId, repository, automaticLabelPattern, DateTime.Now);
+            }
+            catch (Exception e)
+            {
+                mLog.ErrorFormat(
+                    "An error occurred labeling the merged branch {0} in changeset {1}@{2}: {3}",
+                    branchFullName,
+                    csetId, 
+                    repository, 
+                    e.Message);
+
+                if (result == null)
+                    result = new AutomaticLabeler.Result(false, string.Empty, e.Message);
+            }
+
+            labelCreated = result.Name;
+
+            BuildMergeReport.AddLabelProperty(
+                mergeReport, result.IsSuccessful, result.Name, result.ErrorMessage);
+
+            string message = result.IsSuccessful ?
+                string.Format(
+                    "Label {0} created successfully in {1} branch, changeset cs:{2}@{3}",
+                    labelCreated, trunkBranchName, csetId, repository) :
+                string.Format(
+                    "Failed to create label after merging branch {0} " +
+                    "in {1} branch, changeset cs:{2}@{3}. Error: {4}",
+                    branchFullName, trunkBranchName, csetId, repository, result.ErrorMessage);
+
+            Notifier.NotifyTaskStatus(restApi, branchOwner, message, notificationsConfig);
+            return result.IsSuccessful;
+        }
+
+        static bool TryRunAfterCheckinPlan(
+            RestApi restApi, 
+            Branch branch, 
+            MergeReport mergeReport, 
+            string taskNumber, 
+            int csetId, 
+            string labelName,
+            TrunkBotConfiguration botConfig)
+        {
+            string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
+            string scmSpecToSwitchTo = string.Format("cs:{0}@{1}", csetId, repSpec);
+
+            string comment = string.Format(
+                "Running plan after merging branch {0}", branch.FullName);
+
+            BuildProperties properties = CreateBuildProperties(
+                restApi, taskNumber, branch.FullName, labelName, botConfig);
+
+            int iniTime = Environment.TickCount;
+
+            TrunkMergebotApi.CI.PlanResult buildResult = TrunkMergebotApi.CI.Build(
+                restApi, botConfig.CI.Plug, botConfig.CI.PlanAfterCheckin,
+                scmSpecToSwitchTo, comment, properties);
+
+            BuildMergeReport.AddBuildTimeProperty(mergeReport,
+                Environment.TickCount - iniTime);
+
+            string message = string.Empty;
+
+            //TODO:shall we set any attr in trunk branch?
+            if (buildResult.Succeeded)
+            {
+                BuildMergeReport.AddSucceededBuildProperty(
+                    mergeReport, botConfig.CI.PlanAfterCheckin);
+
+                message = string.Format(
+                    "Plan execution after merging branch {0} was successful.",
+                    branch.FullName);
+
+                Notifier.NotifyTaskStatus(
+                    restApi, 
+                    branch.Owner,
+                    message, 
+                    botConfig.Notifications);
+                return true;
+            }
+
+            BuildMergeReport.AddFailedBuildProperty(
+                mergeReport, botConfig.CI.PlanAfterCheckin, buildResult.Explanation);
+
+            message = string.Format(
+                "Plan execution failed after merging branch {0}.\nReason: {1}",
+                branch.FullName,
+                buildResult.Explanation);
+
+            Notifier.NotifyTaskStatus(
+                restApi, branch.Owner, message, botConfig.Notifications);
+
+            return false;
+        }
+
 
         static string GetTaskNumber(
             string branch,
@@ -249,7 +405,7 @@ namespace TrunkBot
                 restApi, issuesConfig.Plug, issuesConfig.ProjectKey,
                 taskNumber, issuesConfig.TitleField);
 
-            mLog.InfoFormat("Obtaining task {0} url...", taskNumber);
+            mLog.InfoFormat("Obtaining task {0} URL...", taskNumber);
             taskUrl = TrunkMergebotApi.Issues.GetIssueUrl(
                 restApi, issuesConfig.Plug, issuesConfig.ProjectKey,
                 taskNumber);
@@ -274,7 +430,7 @@ namespace TrunkBot
             catch (Exception ex)
             {
                 mLog.ErrorFormat(
-                    "Unable to report merge for branch {0} on repository {1}: {2}",
+                    "Unable to report merge for branch '{0}' on repository '{1}': {2}",
                     branchName, repository, ex.Message);
 
                 mLog.DebugFormat(
@@ -298,7 +454,7 @@ namespace TrunkBot
             catch (Exception ex)
             {
                 mLog.ErrorFormat(
-                    "Unable to delete shelve {0} on repository {1}: {2}",
+                    "Unable to delete shelve {0} on repository '{1}': {2}",
                     shelveId, repository, ex.Message);
 
                 mLog.DebugFormat(
@@ -311,6 +467,7 @@ namespace TrunkBot
             RestApi restApi,
             string taskNumber,
             string branchName,
+            string labelName,
             TrunkBotConfiguration botConfig)
         {
             int branchHeadChangesetId = TrunkMergebotApi.GetBranchHead(
@@ -332,7 +489,8 @@ namespace TrunkBot
                 ChangesetOwner = branchHeadChangeset.Owner,
                 TrunkHead = trunkHeadChangeset.ChangesetId.ToString(),
                 TrunkHeadGuid = trunkHeadChangeset.Guid.ToString(),
-                RepSpec = string.Format("{0}@{1}", botConfig.Repository, botConfig.Server)
+                RepSpec = string.Format("{0}@{1}", botConfig.Repository, botConfig.Server),
+                LabelName = labelName
             };
         }
 

@@ -31,6 +31,11 @@ namespace TrunkBot.Api
         internal const string DeleteShelve = "/api/v1/repos/{0}/shelve/{1}";
         internal const string Find = "/api/v1/repos/{0}/find?query={1}&queryDateFormat={2}&fields={3}";
 
+        internal static class Labels
+        {
+            internal const string Create = "/api/v1/repos/{0}/labels";
+        }
+
         internal static class Users
         {
             internal const string GetUserProfile = "/api/v1/users/{0}/profile";

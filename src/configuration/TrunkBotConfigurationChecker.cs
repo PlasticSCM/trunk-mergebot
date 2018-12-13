@@ -73,6 +73,12 @@
                     out propertyErrorMessage))
                 errorMessage += propertyErrorMessage;
 
+            string labelPropertiesErrorMessage = null;
+            if (!CheckValidAutomaticLabelFields(
+                    botConfig.IsAutoLabelEnabled, botConfig.AutomaticLabelPattern,
+                    out labelPropertiesErrorMessage))
+                errorMessage += labelPropertiesErrorMessage;
+
             return string.IsNullOrEmpty(errorMessage);
         }
 
@@ -116,8 +122,10 @@
             if (string.IsNullOrEmpty(botConfig.Plug))
                 errorMessage += BuildFieldError("plug name for CI config");
 
-            if (string.IsNullOrEmpty(botConfig.Plan))
-                errorMessage += BuildFieldError("plan for CI config");
+            if (string.IsNullOrEmpty(botConfig.PlanBranch))
+                errorMessage += BuildFieldError("plan branch for CI config");
+
+            //botConfig.PlanAfterCheckin could be empty, so we don't check its field.
 
             return string.IsNullOrEmpty(errorMessage);
         }
@@ -162,6 +170,35 @@
 
             if (string.IsNullOrEmpty(botConfig.MergedValue))
                 errorMessage += BuildFieldError("merged value " + groupNameMessage);
+
+            return string.IsNullOrEmpty(errorMessage);
+        }
+
+        static bool CheckValidAutomaticLabelFields(
+            bool isAutoLabelEnabled, 
+            string automaticLabelPattern, 
+            out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!isAutoLabelEnabled)
+                return true;
+
+            if (string.IsNullOrEmpty(automaticLabelPattern))
+            {
+                errorMessage += "The label pattern specification field cannot be empty";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(
+                Labeling.AutomaticLabeler.PatternTranslator.ToFindPattern(
+                    automaticLabelPattern, System.DateTime.Now)))
+            {
+                errorMessage += 
+                    "The label pattern specification cannot be parsed. " +
+                    "Check if you have invalid variable specifications " +
+                    "(unclosed variables) or nested variables (not allowed).";
+                return false;
+            }
 
             return string.IsNullOrEmpty(errorMessage);
         }

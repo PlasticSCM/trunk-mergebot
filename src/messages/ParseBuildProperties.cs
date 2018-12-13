@@ -15,6 +15,7 @@ namespace TrunkBot.Messages
         public string ReleaseNotes { get; set; }
         public string ChangesetOwner { get; set; }
         public string RepSpec { get; set; }
+        public string LabelName { get; set; }
     }
 
     public static class ParseBuildProperties
@@ -34,6 +35,7 @@ namespace TrunkBot.Messages
                     { PropertyKey.ReleaseNotes, properties.ReleaseNotes },
                     { PropertyKey.ChangesetOwner, properties.ChangesetOwner },
                     { PropertyKey.RepSpec, properties.RepSpec },
+                    { PropertyKey.LabelName, properties.LabelName },
                 };
         }
 
@@ -50,6 +52,7 @@ namespace TrunkBot.Messages
             internal static string ReleaseNotes = "release.notes";
             internal static string ChangesetOwner = "branch.head.changeset.author";
             internal static string RepSpec = "repspec";
+            internal static string LabelName = "label";
         }
     }  
 }
