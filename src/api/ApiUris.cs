@@ -14,7 +14,7 @@ namespace TrunkBot.Api
         {
             string[] requestParams = new string[args.Length];
             for (int i = 0; i < args.Length; i++)
-                requestParams[i] = WebUtility.UrlEncode(args[i]);
+                requestParams[i] = Uri.EscapeDataString(args[i]);
 
             string endpoint = string.Format(partialUri, requestParams);
             return new Uri(baseUri, endpoint);
@@ -27,9 +27,16 @@ namespace TrunkBot.Api
         internal const string GetChangeset = "/api/v1/repos/{0}/changesets/{1}";
         internal const string GetAttribute = "/api/v1/repos/{0}/attributes/{1}/{2}/{3}";
         internal const string ChangeAttribute = "/api/v1/repos/{0}/attributes/{1}";
+        internal const string CreateAttribute = "/api/v1/repos/{0}/attributes";
         internal const string MergeTo = "/api/v1/repos/{0}/mergeto";
+        internal const string IsMergeAllowed = "/api/v1/repos/{0}/mergeto/allowed/{1}?to={2}";
         internal const string DeleteShelve = "/api/v1/repos/{0}/shelve/{1}";
         internal const string Find = "/api/v1/repos/{0}/find?query={1}&queryDateFormat={2}&fields={3}";
+        internal const string FindBranchesWithReviews =
+            "/api/v1/repos/{0}/findbrancheswithreviews?" +
+            "reviewConditions={1}&branchConditions={2}&queryDateFormat={3}&fields={4}";
+
+        internal const string UpdateReviewStatus = "/api/v1/repos/{0}/codereview/{1}";
 
         internal static class Labels
         {
@@ -62,7 +69,8 @@ namespace TrunkBot.Api
         internal class CI
         {
             internal const string LaunchPlan = "/api/v1/ci/{0}/{1}";
-            internal const string GetPlanStatus = "/api/v1/ci/{0}/{1}/{2}";
+            internal const string DeprecatedGetPlanStatus = "/api/v1/ci/{0}/{1}/{2}";
+            internal const string GetPlanStatus = "/api/v1/ci/{0}/{1}/plan/{2}";
         }
     }
 }

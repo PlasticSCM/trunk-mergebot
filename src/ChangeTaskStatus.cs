@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 using log4net;
 
@@ -52,10 +53,14 @@ namespace TrunkBot
             Branch branch,
             string taskNumber,
             string message,
-            TrunkBotConfiguration botConfig)
+            TrunkBotConfiguration botConfig,
+            string codeReviewsStorageFile)
         {
             try
             {
+                if (botConfig.Plastic.IsApprovedCodeReviewFilterEnabled)
+                    SetBranchReviewsAsPending(restApi, branch.Repository, branch.Id, codeReviewsStorageFile);
+
                 TrunkMergebotApi.ChangeBranchAttribute(
                     restApi, branch.Repository, branch.FullName,
                     botConfig.Plastic.StatusAttribute.Name,
@@ -86,10 +91,17 @@ namespace TrunkBot
             Branch branch,
             string taskNumber,
             string message,
-            TrunkBotConfiguration botConfig)
+            TrunkBotConfiguration botConfig,
+            string codeReviewsStorageFile)
         {
             try
             {
+                if (botConfig.Plastic.IsApprovedCodeReviewFilterEnabled)
+                {
+                    ReviewsStorage.DeleteBranchReviews(
+                        branch.Repository, branch.Id, codeReviewsStorageFile);
+                }
+
                 TrunkMergebotApi.ChangeBranchAttribute(
                     restApi, branch.Repository, branch.FullName,
                     botConfig.Plastic.StatusAttribute.Name,
@@ -113,6 +125,27 @@ namespace TrunkBot
                     restApi, branch, message,
                     "merged", ex, botConfig.Notifications);
             }
+        }
+
+        static void SetBranchReviewsAsPending(
+            RestApi restApi, 
+            string repoName,
+            string branchId, 
+            string codeReviewsStorageFile)
+        {
+            List<Review> branchReviews = ReviewsStorage.GetBranchReviews(
+                repoName, branchId, codeReviewsStorageFile);
+
+            foreach (Review review in branchReviews)
+            {
+                TrunkMergebotApi.CodeReviews.Update(
+                    restApi,
+                    repoName,
+                    review.ReviewId,
+                    Review.PENDING_STATUS_ID,
+                    review.ReviewTitle);
+            }
+            
         }
 
         static readonly ILog mLog = LogManager.GetLogger("trunkbot");

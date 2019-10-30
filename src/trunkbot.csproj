@@ -49,12 +49,14 @@
   <ItemGroup>
     <Compile Include="api\ApiUris.cs" />
     <Compile Include="api\requests\ChangeAttributeRequest.cs" />
+    <Compile Include="api\requests\CreateAttributeRequest.cs" />
     <Compile Include="api\requests\CreateLabelRequest.cs" />
     <Compile Include="api\requests\LaunchPlanRequest.cs" />
     <Compile Include="api\requests\MergeReport.cs" />
     <Compile Include="api\requests\MergeToRequest.cs" />
     <Compile Include="api\requests\NotifyMessageRequest.cs" />
     <Compile Include="api\requests\SetIssueFieldRequest.cs" />
+    <Compile Include="api\requests\UpdateReviewRequest.cs" />
     <Compile Include="api\responses\BranchModel.cs" />
     <Compile Include="api\responses\ChangesetModel.cs" />
     <Compile Include="api\responses\GetPlanStatusResponse.cs" />
@@ -82,6 +84,9 @@
     <Compile Include="ParseUserProfile.cs" />
     <Compile Include="ProcessBranch.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="RepositoryNameComparer.cs" />
+    <Compile Include="Review.cs" />
+    <Compile Include="ReviewsStorage.cs" />
     <Compile Include="TrunkBotArguments.cs" />
     <Compile Include="TrunkBotArgumentsChecker.cs" />
     <Compile Include="TrunkMergebot.cs" />

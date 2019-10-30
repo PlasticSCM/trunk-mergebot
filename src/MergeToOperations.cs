@@ -15,6 +15,7 @@ namespace TrunkBot
             string comment,
             string taskNumber,
             TrunkBotConfiguration botConfig,
+            string codeReviewsStorageFile,
             out int shelveId)
         {
             shelveId = -1;
@@ -22,6 +23,21 @@ namespace TrunkBot
             MergeToResponse result = TrunkMergebotApi.MergeBranchTo(
                 restApi, branch.Repository, branch.FullName, destinationBranch,
                 comment, TrunkMergebotApi.MergeToOptions.CreateShelve);
+
+            if (result.Status == MergeToResultStatus.MergeNotNeeded)
+            {
+                ChangeTaskStatus.SetTaskAsMerged(
+                    restApi,
+                    branch,
+                    taskNumber,
+                    string.Format(
+                        "Branch {0} was already merged to {1} (MergeNotNeeded).",
+                        branch.FullName,
+                        botConfig.TrunkBranch),
+                    botConfig,
+                    codeReviewsStorageFile);
+                return false;
+            }
 
             if (result.Status == MergeToResultStatus.AncestorNotFound ||
                 result.Status == MergeToResultStatus.Conflicts ||
@@ -36,26 +52,13 @@ namespace TrunkBot
                     string.Format(
                         "Can't merge branch {0}. Reason: {1}",
                         branch.FullName, result.Message),
-                    botConfig);
+                    botConfig,
+                    codeReviewsStorageFile);
                 return false;
             }
 
             shelveId = result.ChangesetNumber;
             BuildMergeReport.AddSucceededMergeProperty(mergeReport, result.Status);
-
-            if (result.Status == MergeToResultStatus.MergeNotNeeded)
-            {
-                ChangeTaskStatus.SetTaskAsMerged(
-                    restApi,
-                    branch,
-                    taskNumber,
-                    string.Format(
-                        "Branch {0} was already merged to {1} (MergeNotNeeded).",
-                        branch.FullName,
-                        botConfig.TrunkBranch),
-                    botConfig);
-                return false;
-            }
 
             return true;
         }
@@ -69,6 +72,7 @@ namespace TrunkBot
             string taskNumber,
             int shelveId,
             TrunkBotConfiguration botConfig,
+            string codeReviewsStorageFile,
             out int csetId)
         {
             MergeToResponse mergeResult = TrunkMergebotApi.MergeShelveTo(
@@ -96,7 +100,8 @@ namespace TrunkBot
                     "Can't merge branch {0}. Reason: {1}",
                     branch.FullName,
                     mergeResult.Message),
-                botConfig);
+                botConfig,
+                codeReviewsStorageFile);
 
             return false;
         }

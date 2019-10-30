@@ -21,7 +21,7 @@
     "name":"branch_prefix",
     "displayName":"Branch prefix",
     "type":"string",
-    "description":"The prefix of the branches to be merged. Example: 'task' will take 'task1234'. This is the same prefix that you use to link branches to the issue tracker."
+    "description":"The prefix of the branches to be merged. Example: 'task' will take 'task1234'. This is the same prefix that you use to link branches to the issue tracker. Leave this field empty to track all branches in the repository."
   },
   {
     "name": "bot_user",
@@ -31,50 +31,64 @@
   },
   {
     "name":"plastic_group",
-    "displayName":"Plastic SCM advanced configuration",
+    "displayName":"Branch lifecycle and automatic labels",
     "type":"group",
     "description":"",
     "items":[
       {
+        "name": "code_review_group",
+        "displayName": "Only consider branches with an approved code review",
+        "type": "group",
+        "description": "The bot will only consider a branch if it has a code review, and the review was marked as approved. If you set this, then you can skip the 'resolved status value' setting if you prefer (it won't be mandatory).This is excellent to enforce that all branches are reviewed by the team prior to merge.",
+        "items": [
+          {
+            "name":"is_enabled",
+            "displayName":"Process reviewed branches only",
+            "type":"bool",
+            "description":"(You will be need to enter the 'Branch status attribute name' and 'Merged status value' fields below to let the trunk-bot track correctly the sucessfully merged branches on this mode)"
+          }
+        ]
+      },
+      {
         "name":"status_attribute_group",
-        "displayName":"Status attribute",
+        "displayName":"Branch lifecycle configuration with a status attribute",
         "type":"group",
-        "description":"Plastic branch status attribute name and values.",
+        "description":"Define when a branch is ready to be merged based on a given attribute. Also the values the attribute will take when the bot starts processing the branch.",
         "items":[
           {
             "name":"name",
             "displayName":"Branch status attribute name",
             "type":"string",
-            "description":"Branch attribute name that describes the lifecycle status of a branch (e.g. 'status'). Make sure it's created in Plastic SCM first!"
+            "description":"Branch attribute name that describes the lifecycle status of a branch (e.g. 'status'). It will be automatically created if it doesn't exist yet. This field is mandatory."
           },
           {
             "name":"resolved_value",
             "displayName":"Resolved status value",
             "type":"string",
-            "description":"Value of specified status attribute that means a branch task is resolved (e.g. 'resolved')."
+            "description":"Only branches with this status will be considered by the bot (e.g. 'resolved')."
           },
           {
             "name":"testing_value",
             "displayName":"Testing status value",
             "type":"string",
-            "description":"Value of specified status attribute that means a branch task is being processed (e.g. 'testing')."
+            "description":"The bot will set this value when it starts processing the branch (e.g. 'testing')."
           },
           {
             "name":"failed_value",
             "displayName":"Failed status value",
             "type":"string",
-            "description":"Value of specified status attribute that means a branch task processing failed on any stage (e.g. 'failed')."
+            "description":"The bot will set this value if the branch is rejected (merge can't happen, tests fail, etc.) (e.g. 'failed'). This value must be different than 'Resolved status value'"
           },
           {
             "name":"merged_value",
             "displayName":"Merged status value",
             "type":"string",
-            "description":"Value of specified status attribute that means a branch task was successfully processed and it was merged to the specified trunk branch (e.g. 'merged')."
+            "description":"The bot will set this status when the branch is correctly processed and merged to the trunk (e.g. 'merged'). This value must be different than 'Resolved status value'"
           }
         ]
       },
-      {
-        "name":"label_group",
+	  {
+	    "name":"label_group",
         "displayName":"Automatic labeling",
         "type":"group",
         "description":"Label the changeset after a successful merge",
@@ -85,11 +99,11 @@
             "type":"bool",
             "description":"The mergebot will label the changeset created during the merge. It can use 2 options: number autoincrement, and dates."
           },
-          {
+		  {
             "name":"pattern",
             "displayName":"Label pattern",
             "type":"string",
-            "description":"Option 1: ${AUTO_INCREMENT_NUMBER}, Option 2: ${BUILD_DATE_FORMATTED, <a_valid_date_format>}. Example: 'LABEL.${AUTO_INCREMENT_NUMBER}_${BUILD_DATE_FORMATTED, yyyy-MM-dd}' will create LABEL.128.2018-10-23. Nested variables are not allowed. Go to the 'Learn more' section for more info."
+            "description":"Option 1: ${AUTO_INCREMENT_NUMBER}, Option 2: ${BUILD_DATE_FORMATTED, <a_valid_date_format>}. Example: 'LABEL.${AUTO_INCREMENT_NUMBER}_${BUILD_DATE_FORMATTED, yyyy-MM-dd}' will create LABEL.128.2018-10-23. Nested variables are not allowed. Go to the 'Learn more' section of 'trunk-bot' under the 'Mergebot Types' section for further info."
           }
 		]
 	  }
@@ -201,13 +215,13 @@
         "name":"user_profile_field",
         "displayName":"User profile field",
         "type":"profile_field",
-        "description":"The field in the profile to use to identify the correct user to notify. Either this field or the \"Always notify to\" one are mandatory if you're configuring a notifier plug (you should probably fill-in both)."
+        "description":"The field in the profile to use to identify the correct user to notify. Either this field or the \"Always notify to\" field must be filled-in if you're configuring a notifier plug (but you should probably fill in both of them)."
       },
       {
         "name":"fixed_recipients",
         "displayName":"Always notify to:",
         "type":"string",
-        "description":"Comma-separated list of users to notify on every event (plus the branch owner). Either this field or the \"User profile field\" one are mandatory if you're configuring a notifier plug (you should probably fill-in both)."
+        "description":"Comma-separated list of users to notify on every event (plus the branch owner). This list can contain either plastic users (so the actual values will be retrieved from their profiles) or plain usernames in the notification system (e.g. an email address). Either this field or the \"User profile\" field must be filled-in if you're configuring a notifier plug (but you should probably fill in both of them)."
       }
     ]
   }

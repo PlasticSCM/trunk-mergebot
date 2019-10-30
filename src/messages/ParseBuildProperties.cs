@@ -16,6 +16,13 @@ namespace TrunkBot.Messages
         public string ChangesetOwner { get; set; }
         public string RepSpec { get; set; }
         public string LabelName { get; set; }
+        public string Stage { get; set; }
+
+        public static class StageValues
+        {
+            public const string PRE_CHECKIN = "pre";
+            public const string POST_CHECKIN = "post";
+        }
     }
 
     public static class ParseBuildProperties
@@ -36,6 +43,7 @@ namespace TrunkBot.Messages
                     { PropertyKey.ChangesetOwner, properties.ChangesetOwner },
                     { PropertyKey.RepSpec, properties.RepSpec },
                     { PropertyKey.LabelName, properties.LabelName },
+                    { PropertyKey.Stage, properties.Stage },
                 };
         }
 
@@ -53,6 +61,7 @@ namespace TrunkBot.Messages
             internal static string ChangesetOwner = "branch.head.changeset.author";
             internal static string RepSpec = "repspec";
             internal static string LabelName = "label";
+            internal static string Stage = "stage";
         }
     }  
 }

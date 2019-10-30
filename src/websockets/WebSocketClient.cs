@@ -10,10 +10,14 @@ namespace TrunkBot.WebSockets
 {
     class WebSocketClient
     {
+        internal const string BRANCH_ATTRIBUTE_CHANGED_TRIGGER_TYPE = "branchAttributeChanged";
+        internal const string CODE_REVIEW_CHANGED_TRIGGER_TYPE = "codeReviewChanged";
+
         internal WebSocketClient(
             string serverUrl,
             string name,
             string apikey,
+            string[] eventNamesToSubscribe,
             Action<object> processMessage)
         {
             mName = name;
@@ -25,6 +29,8 @@ namespace TrunkBot.WebSockets
             mWebSocket.OnError += OnError;
             mWebSocket.Log.Output = LogOutput;
             mWebSocket.SslConfiguration.ServerCertificateValidationCallback += CertificateValidation;
+
+            mEventNamesToSubscribe = eventNamesToSubscribe;
 
             mProcessMessage = processMessage;
         }
@@ -58,7 +64,12 @@ namespace TrunkBot.WebSockets
                 return false;
 
             mWebSocket.Send(StartupMessages.BuildLoginMessage(mApiKey));
-            mWebSocket.Send(StartupMessages.BuildRegisterTriggerMessage("branchAttributeChanged"));
+
+            foreach (string eventName in mEventNamesToSubscribe)
+            {
+                mWebSocket.Send(
+                    StartupMessages.BuildRegisterTriggerMessage(eventName));
+            }
 
             mLog.InfoFormat("TrunkBot [{0}] connected!", mName);
             return true;
@@ -103,6 +114,7 @@ namespace TrunkBot.WebSockets
         readonly ILog mLog = LogManager.GetLogger("websocket");
         readonly string mName;
         readonly string mApiKey;
+        readonly string[] mEventNamesToSubscribe;
         readonly Action<object> mProcessMessage;
 
         volatile bool mbIsTryingConnection = false;

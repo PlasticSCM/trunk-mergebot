@@ -1,8 +1,9 @@
-﻿namespace TrunkBot.Configuration
+﻿using System;
+namespace TrunkBot.Configuration
 {
-    internal class TrunkBotConfigurationChecker
+    public class TrunkBotConfigurationChecker
     {
-        internal static bool CheckConfiguration(
+        public static bool CheckConfiguration(
             TrunkBotConfiguration botConfig,
             out string errorMessage)
         {
@@ -17,7 +18,7 @@
             return true;
         }
 
-        internal static bool CheckValidFields(
+        public static bool CheckValidFields(
             TrunkBotConfiguration botConfig,
             out string errorMessage)
         {
@@ -54,20 +55,29 @@
             return string.IsNullOrEmpty(errorMessage);
         }
 
-        static bool CheckValidPlasticFields(
+        public static bool CheckValidPlasticFields(
             TrunkBotConfiguration.PlasticSCM botConfig,
             out string errorMessage)
         {
             errorMessage = string.Empty;
 
+            string fieldNameBeingChecked = "Branch lifecycle and automatic labels";
+
             if (botConfig == null)
             {
-                errorMessage = BuildFieldError("Plastic SCM advanced configuration");
+                errorMessage = BuildFieldError(fieldNameBeingChecked);
+                return false;
+            }
+
+            if (!AreAnyFiltersDefined(botConfig))
+            {
+                errorMessage = BuildNoFiltersEnabledErrorMessage(fieldNameBeingChecked);
                 return false;
             }
 
             string propertyErrorMessage = null;
-            if (!CheckValidStatusPropertyFields(
+            if (!CheckValidStatusPropertyFieldsForPlasticAttr(
+                    botConfig.IsApprovedCodeReviewFilterEnabled,
                     botConfig.StatusAttribute,
                     "of the status attribute for Plastic config",
                     out propertyErrorMessage))
@@ -80,6 +90,20 @@
                 errorMessage += labelPropertiesErrorMessage;
 
             return string.IsNullOrEmpty(errorMessage);
+        }
+
+        static bool AreAnyFiltersDefined(TrunkBotConfiguration.PlasticSCM botConfig)
+        {
+            if (botConfig.IsApprovedCodeReviewFilterEnabled)
+                return true;
+
+            if (string.IsNullOrWhiteSpace(botConfig.StatusAttribute.Name))
+                return false;
+
+            if (string.IsNullOrWhiteSpace(botConfig.StatusAttribute.ResolvedValue))
+                return false;
+
+            return true;
         }
 
         static bool CheckValidIssueTrackerFields(
@@ -98,7 +122,7 @@
                 errorMessage += BuildFieldError("title field for Issue Tracker config");
 
             string propertyErrorMessage = null;
-            if (!CheckValidStatusPropertyFields(
+            if (!CheckValidStatusPropertyFieldsForIssueTracker(
                     botConfig.StatusField,
                     "of the status field for Issue Tracker config",
                     out propertyErrorMessage))
@@ -114,10 +138,7 @@
             errorMessage = string.Empty;
 
             if (botConfig == null)
-            {
-                errorMessage = BuildFieldError("CI Integration configuration");
-                return false;
-            }
+                return true;
 
             if (string.IsNullOrEmpty(botConfig.Plug))
                 errorMessage += BuildFieldError("plug name for CI config");
@@ -152,7 +173,27 @@
             return string.IsNullOrEmpty(errorMessage);
         }
 
+        static bool CheckValidStatusPropertyFieldsForIssueTracker(
+            TrunkBotConfiguration.StatusProperty botConfig,
+            string groupNameMessage,
+            out string errorMessage)
+        {
+            return CheckValidStatusPropertyFieldsForPlasticAttr(
+                false, botConfig, groupNameMessage, out errorMessage);
+        }
+
+        static bool CheckValidStatusPropertyFieldsForPlasticAttr(
+            bool bIsApprovedCodeReviewFilterEnabled,
+            TrunkBotConfiguration.StatusProperty botConfig,
+            string groupNameMessage,
+            out string errorMessage)
+        {
+            return CheckValidStatusPropertyFields(
+                bIsApprovedCodeReviewFilterEnabled, botConfig, groupNameMessage, out errorMessage);
+        }
+
         static bool CheckValidStatusPropertyFields(
+            bool bIsApprovedCodeReviewFilterEnabled,
             TrunkBotConfiguration.StatusProperty botConfig,
             string groupNameMessage,
             out string errorMessage)
@@ -162,14 +203,36 @@
             if (string.IsNullOrEmpty(botConfig.Name))
                 errorMessage += BuildFieldError("name " + groupNameMessage);
 
-            if (string.IsNullOrEmpty(botConfig.ResolvedValue))
+            if (string.IsNullOrEmpty(botConfig.ResolvedValue) && !bIsApprovedCodeReviewFilterEnabled)
                 errorMessage += BuildFieldError("resolved value " + groupNameMessage);
 
-            if (string.IsNullOrEmpty(botConfig.FailedValue))
+            if (string.IsNullOrEmpty(botConfig.FailedValue) && !bIsApprovedCodeReviewFilterEnabled)
                 errorMessage += BuildFieldError("failed value " + groupNameMessage);
 
             if (string.IsNullOrEmpty(botConfig.MergedValue))
                 errorMessage += BuildFieldError("merged value " + groupNameMessage);
+
+            if (!string.IsNullOrEmpty(botConfig.ResolvedValue) &&
+                !string.IsNullOrEmpty(botConfig.MergedValue) &&
+                botConfig.ResolvedValue.Equals(
+                    botConfig.MergedValue, StringComparison.InvariantCultureIgnoreCase))
+            {
+                errorMessage += string.Format(
+                    "The 'merged' attribute value: [{0}] must " +
+                    "be different than 'resolved' attribute value: [{1}] (case insensitive)\n",
+                    botConfig.ResolvedValue, botConfig.MergedValue);
+            }
+
+            if (!string.IsNullOrEmpty(botConfig.ResolvedValue) &&
+                !string.IsNullOrEmpty(botConfig.FailedValue) &&
+                botConfig.ResolvedValue.Equals(
+                    botConfig.FailedValue, StringComparison.InvariantCultureIgnoreCase))
+            {
+                errorMessage += string.Format(
+                    "The 'failed' attribute value: [{0}] must " +
+                    "be different than 'resolved' attribute value: [{1}] (case insensitive)\n",
+                    botConfig.ResolvedValue, botConfig.FailedValue);
+            }
 
             return string.IsNullOrEmpty(errorMessage);
         }
@@ -212,6 +275,13 @@
         static string BuildFieldError(string fieldName)
         {
             return string.Format("* The {0} must be defined.\n", fieldName);
+        }
+
+        static string BuildNoFiltersEnabledErrorMessage(string fieldName)
+        {
+            return string.Format(
+                "* Either the 'Process reviewed branches only' or the 'Branch lifecycle configuration " +
+                "with a status attribute' must be properly enabled in the '{0}' section.", fieldName);
         }
     }
 }

@@ -57,18 +57,14 @@ namespace TrunkBot
             string owner,
             TrunkBotConfiguration.Notifier notificationsConfig)
         {
-            List<string> result = new List<string>();
-
-            string recipientForOwner = ResolveUserProfile.ResolveField(
-                restApi, owner, notificationsConfig.UserProfileField);
-
-            if (!string.IsNullOrEmpty(recipientForOwner))
-                result.Add(recipientForOwner);
+            List<string> recipients = new List<string>();
+            recipients.Add(owner);
 
             if (notificationsConfig.FixedRecipients != null)
-                result.AddRange(notificationsConfig.FixedRecipients);
+                recipients.AddRange(notificationsConfig.FixedRecipients);
 
-            return result;
+            return ResolveUserProfile.ResolveFieldForUsers(
+                restApi, recipients, notificationsConfig.UserProfileField);
         }
 
         static readonly ILog mLog = LogManager.GetLogger("notifier");

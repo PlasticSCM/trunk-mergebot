@@ -13,6 +13,45 @@ namespace TrunkBot
 {
     internal class TrunkMergebotApi
     {
+        internal static class Attributes
+        {
+            internal static bool CreateAttribute(
+                RestApi restApi, 
+                string repoName, 
+                string attributeName,
+                string attributeComment)
+            {
+                CreateAttributeRequest request = new CreateAttributeRequest()
+                {
+                    Name = attributeName,
+                    Comment = attributeComment
+                };
+
+                SingleResponse response = restApi.Attributes.Create(repoName, request);
+
+                return GetBoolValue(response.Value, false);
+            }
+        }
+
+        internal static class CodeReviews
+        {
+            internal static void Update(
+                RestApi restApi,
+                string repoName,
+                string reviewId,
+                int newStatus,
+                string newTitle)
+            {
+                UpdateReviewRequest request = new UpdateReviewRequest()
+                {
+                    Status = newStatus,
+                    Title = newTitle
+                };
+
+                restApi.CodeReviews.UpdateReview(repoName, reviewId, request);
+            }
+        }
+
         internal static class Labels
         {
             internal static void Create(
@@ -97,6 +136,9 @@ namespace TrunkBot
                 RestApi restApi,
                 string notifierName, string message, List<string> recipients)
             {
+                if (recipients == null)
+                    return;
+
                 NotifyMessageRequest request = new NotifyMessageRequest()
                 {
                     Message = message,
@@ -291,11 +333,42 @@ namespace TrunkBot
             return restApi.Find(repName, query, queryDateFormat, actionDescription, fields);
         }
 
+        internal static JArray FindBranchesWithReviews(
+            RestApi restApi,
+            string repName,
+            string reviewConditions,
+            string branchConditions,
+            string queryDateFormat,
+            string actionDescription,
+            string[] fields)
+        {
+            return restApi.FindBranchesWithReviews(
+                repName, 
+                reviewConditions, 
+                branchConditions, 
+                queryDateFormat, 
+                actionDescription, 
+                fields);
+        }
+
         internal static void DeleteShelve(
             RestApi restApi,
             string repoName, int shelveId)
         {
             restApi.DeleteShelve(repoName, shelveId);
+        }
+
+        internal static bool IsMergeAllowed(
+            RestApi restApi, 
+            string repoName, 
+            string sourceBranchName, 
+            string destinationBranchName)
+        {
+            MergeToAllowedResponse response = restApi.IsMergeAllowed(
+                restApi, repoName, sourceBranchName, destinationBranchName);
+
+            return 
+                response.Result.Trim().Equals("ok", StringComparison.InvariantCultureIgnoreCase);
         }
 
         static MergeToResponse MergeTo(

@@ -1,4 +1,6 @@
-﻿using Newtonsoft.Json;
+﻿using log4net;
+
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace TrunkBot.Messages
@@ -14,12 +16,24 @@ namespace TrunkBot.Messages
         public string AttributeValue { get; set; }
     }
 
+    class CodeReviewChangeEvent
+    {
+        public string Repository { get; set; }
+        public string BranchId { get; set; }
+        public string BranchFullName { get; set; }
+        public string BranchOwner { get; set; }
+        public string BranchComment { get; set; }
+        public string CodeReviewId { get; set; }
+        public string CodeReviewTitle { get; set; }
+        public string CodeReviewStatus { get; set; }
+    }
+
     static class ParseEvent
     {
-        internal static BranchAttributeChangeEvent Parse(string message)
+        internal static T Parse<T>(string message)
         {
             string properties = GetPropertiesFromMessage(message);
-            return JsonConvert.DeserializeObject<BranchAttributeChangeEvent>(properties);
+            return JsonConvert.DeserializeObject<T>(properties);
         }
 
         static string GetPropertiesFromMessage(string message)
@@ -29,11 +43,17 @@ namespace TrunkBot.Messages
                 JObject obj = JObject.Parse(message);
                 return obj.Value<object>("properties").ToString();
             }
-            catch
+            catch (System.Exception e)
             {
-                // pending to add log
+                mLog.WarnFormat(
+                    "Unable to parse incoming message:[{0}]. {1}", message, e.Message);
+
                 return string.Empty;
             }
         }
+
+        static readonly ILog mLog = LogManager.GetLogger("eventparser");
     }
+
+    
 }

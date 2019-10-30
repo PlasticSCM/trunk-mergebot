@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 using log4net;
 
@@ -24,7 +25,8 @@ namespace TrunkBot
             RestApi restApi,
             Branch branch,
             TrunkBotConfiguration botConfig,
-            string botName)
+            string botName,
+            string codeReviewsStorageFile)
         {
             int shelveId = -1;
 
@@ -34,8 +36,27 @@ namespace TrunkBot
             {
                 mLog.InfoFormat("Getting task number of branch {0} ...", branch.FullName);
                 taskNumber = GetTaskNumber(branch.FullName, botConfig.BranchPrefix);
-                if (!IsTaskReady(restApi, taskNumber, botConfig.Issues))
+                if (!IsTaskReady(
+                    restApi,
+                    taskNumber,
+                    botConfig.Issues,
+                    botConfig.Plastic.IsApprovedCodeReviewFilterEnabled,
+                    branch.Repository,
+                    branch.Id,
+                    codeReviewsStorageFile))
+                {
                     return Result.NotReady;
+                }
+
+                if (!IsMergeAllowed(restApi, branch, botConfig.TrunkBranch))
+                {
+                    mLog.WarnFormat(
+                        "Branch {0} is not yet ready to be merged. " +
+                        "Jumping to next branch in the queue...",
+                        branch.FullName);
+
+                    return Result.NotReady;
+                }
 
                 mLog.InfoFormat("Building the merge report of task {0} ...", taskNumber);
                 mergeReport = BuildMergeReport.Build(TrunkMergebotApi.GetBranch(
@@ -57,13 +78,13 @@ namespace TrunkBot
 
                 if (!MergeToOperations.TryMergeToShelve(
                         restApi, branch, botConfig.TrunkBranch, mergeReport,
-                        comment, taskNumber, botConfig,
+                        comment, taskNumber, botConfig, codeReviewsStorageFile,
                         out shelveId))
                     return Result.Failed;
 
                 mLog.InfoFormat("Testing branch {0} ...", branch.FullName);
                 if (!TryBuildTask(restApi, branch, mergeReport,
-                        taskNumber, shelveId, botConfig))
+                        taskNumber, shelveId, botConfig, codeReviewsStorageFile))
                     return Result.Failed;
 
                 mLog.InfoFormat("Checking-in shelved merged {0} from {1} to {2}",
@@ -72,7 +93,7 @@ namespace TrunkBot
                 int csetId = -1;
                 if (!MergeToOperations.TryApplyShelve(
                         restApi, branch, botConfig.TrunkBranch, mergeReport,
-                        comment, taskNumber, shelveId, botConfig,
+                        comment, taskNumber, shelveId, botConfig, codeReviewsStorageFile,
                         out csetId))
                     return Result.Failed;
 
@@ -88,7 +109,8 @@ namespace TrunkBot
                         "Branch {0} was correctly merged to {1}.",
                         branch.FullName,
                         botConfig.TrunkBranch),
-                    botConfig);
+                    botConfig,
+                    codeReviewsStorageFile);
 
                 string labelName = string.Empty;
                 if (!CreateLabel(
@@ -106,8 +128,8 @@ namespace TrunkBot
                 {
                     return Result.Failed;
                 }
-                    
-                if (string.IsNullOrEmpty(botConfig.CI.PlanAfterCheckin))
+
+                if (!HasToRunPlanAfterTaskMerged(botConfig.CI))
                     return Result.Ok;
 
                 if (!TryRunAfterCheckinPlan(
@@ -139,7 +161,8 @@ namespace TrunkBot
                         "Can't process branch {0} because of an unexpected error: {1}.",
                         branch.FullName,
                         ex.Message),
-                    botConfig);
+                    botConfig,
+                    codeReviewsStorageFile);
 
                 BuildMergeReport.SetUnexpectedExceptionProperty(mergeReport, ex.Message);
 
@@ -155,14 +178,35 @@ namespace TrunkBot
             return Result.Ok;
         }
 
+        static bool IsMergeAllowed(RestApi restApi, Branch branch, string trunkBranch)
+        {
+            return TrunkMergebotApi.IsMergeAllowed(
+                restApi, branch.Repository, branch.FullName, trunkBranch);
+        }
+
         static bool TryBuildTask(
             RestApi restApi,
             Branch branch,
             MergeReport mergeReport,
             string taskNumber,
             int shelveId,
-            TrunkBotConfiguration botConfig)
+            TrunkBotConfiguration botConfig,
+            string codeReviewsStorageFile)
         {
+            if (botConfig.CI == null)
+            {
+                string message =
+                    "No CI plug was set for this mergebot. Therefore, no " +
+                    "build actions for task " + taskNumber + " will be performed.";
+
+                mLog.Info(message);
+
+                Notifier.NotifyTaskStatus(
+                    restApi, branch.Owner, message, botConfig.Notifications);
+
+                return true;
+            }
+
             ChangeTaskStatus.SetTaskAsTesting(restApi, branch, taskNumber, string.Format(
                 "Starting to test branch {0}.", branch.FullName), botConfig);
 
@@ -173,7 +217,12 @@ namespace TrunkBot
                 "Building branch {0}", branch.FullName);
 
             BuildProperties properties = CreateBuildProperties(
-                restApi, taskNumber, branch.FullName, string.Empty, botConfig);
+                restApi,
+                taskNumber,
+                branch.FullName,
+                string.Empty,
+                BuildProperties.StageValues.PRE_CHECKIN,
+                botConfig);
 
             int iniTime = Environment.TickCount;
 
@@ -202,7 +251,8 @@ namespace TrunkBot
                     "Branch {0} build failed. \nReason: {1}",
                     branch.FullName,
                     buildResult.Explanation),
-                botConfig);
+                botConfig,
+                codeReviewsStorageFile);
 
             return false;
         }
@@ -265,6 +315,15 @@ namespace TrunkBot
             return result.IsSuccessful;
         }
 
+        static bool HasToRunPlanAfterTaskMerged(
+            TrunkBotConfiguration.ContinuousIntegration ciConfig)
+        {
+            if (ciConfig == null)
+                return false;
+
+            return !string.IsNullOrEmpty(ciConfig.PlanAfterCheckin);
+        }
+
         static bool TryRunAfterCheckinPlan(
             RestApi restApi, 
             Branch branch, 
@@ -281,7 +340,12 @@ namespace TrunkBot
                 "Running plan after merging branch {0}", branch.FullName);
 
             BuildProperties properties = CreateBuildProperties(
-                restApi, taskNumber, branch.FullName, labelName, botConfig);
+                restApi, 
+                taskNumber, 
+                branch.FullName, 
+                labelName,
+                BuildProperties.StageValues.POST_CHECKIN, 
+                botConfig);
 
             int iniTime = Environment.TickCount;
 
@@ -359,10 +423,24 @@ namespace TrunkBot
         static bool IsTaskReady(
             RestApi restApi,
             string taskNumber,
-            TrunkBotConfiguration.IssueTracker issuesConfig)
+            TrunkBotConfiguration.IssueTracker issuesConfig,
+            bool bIsApprovedCodeReviewFilterEnabled,
+            string branchRepository,
+            string branchId,
+            string codeReviewsStorageFile)
         {
             if (taskNumber == null)
                 return false;
+
+            if (issuesConfig == null && !bIsApprovedCodeReviewFilterEnabled)
+                return true;
+
+            if (bIsApprovedCodeReviewFilterEnabled && 
+                !AreAllCodeReviewsApprovedAtLeastOne(
+                    branchRepository, branchId, codeReviewsStorageFile))
+            {
+                return false;
+            }
 
             if (issuesConfig == null)
                 return true;
@@ -385,6 +463,24 @@ namespace TrunkBot
                 taskNumber, issuesConfig.StatusField.ResolvedValue, status);
 
             return status == issuesConfig.StatusField.ResolvedValue;
+        }
+
+        static bool AreAllCodeReviewsApprovedAtLeastOne(
+            string branchRepository, string branchId, string codeReviewsStorageFile)
+        {
+            List<Review> branchReviews =
+                ReviewsStorage.GetBranchReviews(branchRepository, branchId, codeReviewsStorageFile);
+
+            if (branchReviews == null || branchReviews.Count == 0)
+                return false;
+
+            foreach(Review branchReview in branchReviews)
+            {
+                if (!branchReview.IsApproved())
+                    return false;
+            }
+
+            return true;
         }
 
         static bool GetIssueInfo(
@@ -468,6 +564,7 @@ namespace TrunkBot
             string taskNumber,
             string branchName,
             string labelName,
+            string buildStagePreCiOrPostCi,
             TrunkBotConfiguration botConfig)
         {
             int branchHeadChangesetId = TrunkMergebotApi.GetBranchHead(
@@ -490,7 +587,8 @@ namespace TrunkBot
                 TrunkHead = trunkHeadChangeset.ChangesetId.ToString(),
                 TrunkHeadGuid = trunkHeadChangeset.Guid.ToString(),
                 RepSpec = string.Format("{0}@{1}", botConfig.Repository, botConfig.Server),
-                LabelName = labelName
+                LabelName = labelName,
+                Stage = buildStagePreCiOrPostCi
             };
         }
 

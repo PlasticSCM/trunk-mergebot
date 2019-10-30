@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading;
@@ -25,7 +26,10 @@ namespace TrunkBot
                 botName = botArgs.BotName;
 
                 ConfigureLogging(botName);
-                mLog.InfoFormat("TrunkBot [{0}] started.", botName);
+
+                mLog.InfoFormat("TrunkBot [{0}] started. Version [{1}]",
+                    botName,
+                    System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 
                 string argsStr = args == null ? string.Empty : string.Join(" ", args);
                 mLog.DebugFormat("Args: [{0}]. Are valid args?: [{1}]", argsStr, bValidArgs);
@@ -78,11 +82,14 @@ namespace TrunkBot
 
                 ConfigureServicePoint();
 
+                string escapedBotName = GetEscapedBotName(botName);
+
                 LaunchTrunkMergebot(
                     botArgs.WebSocketUrl,
                     botArgs.RestApiUrl,
                     botConfig,
-                    ToolConfig.GetBranchesFile(GetEscapedBotName(botName)),
+                    ToolConfig.GetBranchesFile(escapedBotName),
+                    ToolConfig.GetCodeReviewsFile(escapedBotName),
                     botName,
                     botArgs.ApiKey);
 
@@ -108,6 +115,7 @@ namespace TrunkBot
             string restApiUrl,
             TrunkBotConfiguration botConfig,
             string branchesQueueFilePath,
+            string codeReviewsTrackedFilePath,
             string botName,
             string apiKey)
         {
@@ -115,10 +123,29 @@ namespace TrunkBot
                 Directory.CreateDirectory(Path.GetDirectoryName(branchesQueueFilePath));
 
             TrunkMergebot trunkBot = new TrunkMergebot(
-                restApiUrl,  botConfig, branchesQueueFilePath, botName);
+                restApiUrl,
+                botConfig, 
+                branchesQueueFilePath,
+                codeReviewsTrackedFilePath,
+                botName);
 
             try
             {
+                trunkBot.EnsurePlasticStatusAttributeExists();
+            }
+            catch (Exception e)
+            {
+                mLog.FatalFormat(
+                    "TrunkBot [{0}] is going to finish because it wasn't able " +
+                    "to configure the required plastic status attribute [{1}] for its proper working. " +
+                    "Reason: {2}", botName, botConfig.Plastic.StatusAttribute.Name, e.Message);
+
+                mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, e.StackTrace);
+                throw;
+            }
+
+            try
+            { 
                 trunkBot.LoadBranchesToProcess();
             }
             catch (Exception e)
@@ -132,15 +159,34 @@ namespace TrunkBot
 
             ThreadPool.QueueUserWorkItem(trunkBot.ProcessBranches);
 
+            string[] eventsToSubscribe = GetEventNamesToSuscribe(
+                botConfig.Plastic.IsApprovedCodeReviewFilterEnabled,
+                botConfig.Plastic.IsBranchAttrFilterEnabled);
+
             WebSocketClient ws = new WebSocketClient(
                 webSocketUrl,
                 botName,
                 apiKey,
-                trunkBot.OnAttributeChanged);
+                eventsToSubscribe,
+                trunkBot.OnEventReceived);
 
             ws.ConnectWithRetries();
 
             Task.Delay(-1).Wait();
+        }
+
+        static string[] GetEventNamesToSuscribe(
+            bool isApprovedCodeReviewFilterEnabled, 
+            bool isBranchAttrFilterEnabled)
+        {
+            List<string> eventNamesList = new List<string>();
+            if (isApprovedCodeReviewFilterEnabled)
+                eventNamesList.Add(WebSocketClient.CODE_REVIEW_CHANGED_TRIGGER_TYPE);
+
+            if (isBranchAttrFilterEnabled)
+                eventNamesList.Add(WebSocketClient.BRANCH_ATTRIBUTE_CHANGED_TRIGGER_TYPE);
+
+            return eventNamesList.ToArray();
         }
 
         static void ConfigureServicePoint()

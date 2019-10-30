@@ -21,4 +21,9 @@ namespace TrunkBot.Api.Responses
         Error = 5,
         MultipleHeads = 6
     }
+
+    public class MergeToAllowedResponse
+    {
+        public string Result { get; set; }
+    }
 }

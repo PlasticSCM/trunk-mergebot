@@ -17,6 +17,13 @@ namespace TrunkBot.Configuration
             return GetConfigFilePath(branchesFileName);
         }
 
+        internal static string GetCodeReviewsFile(string botName)
+        {
+            string codeReviewsFileName = string.Format(CODE_REVIEWS_FILE, botName);
+
+            return GetConfigFilePath(codeReviewsFileName);
+        }
+
         static string GetConfigFilePath(string configfile)
         {
             return Path.Combine(GetConfigDirectory(), configfile);
@@ -35,6 +42,7 @@ namespace TrunkBot.Configuration
         }
 
         const string BRANCHES_FILE = "branches.{0}.txt";
+        const string CODE_REVIEWS_FILE = "reviews.{0}.txt";
         const string LOG_CONFIG_FILE = "trunkbot.log.conf";
 
         const string CONFIG_FOLDER_NAME = "config";

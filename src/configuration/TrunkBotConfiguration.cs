@@ -7,21 +7,35 @@ using Newtonsoft.Json.Linq;
 
 namespace TrunkBot.Configuration
 {
-    internal class TrunkBotConfiguration
+    public class TrunkBotConfiguration
     {
-        internal class PlasticSCM
+        public class PlasticSCM
         {
+            public readonly bool IsApprovedCodeReviewFilterEnabled;
+
+            public readonly bool IsBranchAttrFilterEnabled;
+
             internal readonly StatusProperty StatusAttribute;
 
             internal readonly bool IsAutoLabelEnabled;
             internal readonly string AutomaticLabelPattern;
 
-            internal PlasticSCM (
-                StatusProperty statusAttribute, bool bAutoLabelEnabled, string autoLabelPattern)
+            public PlasticSCM (
+                bool bApprovedCodeReviewFilterEnabled,
+                StatusProperty statusAttribute, 
+                bool bAutoLabelEnabled, 
+                string autoLabelPattern)
             {
+                IsApprovedCodeReviewFilterEnabled = bApprovedCodeReviewFilterEnabled;
+
                 StatusAttribute = statusAttribute;
+
                 IsAutoLabelEnabled = bAutoLabelEnabled;
                 AutomaticLabelPattern = autoLabelPattern;
+
+                IsBranchAttrFilterEnabled =
+                    !string.IsNullOrWhiteSpace(statusAttribute.Name) &&
+                    !string.IsNullOrWhiteSpace(statusAttribute.ResolvedValue);
             }
         }
 
@@ -75,7 +89,7 @@ namespace TrunkBot.Configuration
             }
         }
 
-        internal class StatusProperty
+        public class StatusProperty
         {
             internal readonly string Name;
             internal readonly string ResolvedValue;
@@ -83,7 +97,7 @@ namespace TrunkBot.Configuration
             internal readonly string FailedValue;
             internal readonly string MergedValue;
 
-            internal StatusProperty(
+            public StatusProperty(
                 string name,
                 string resolvedValue,
                 string testingValue,
@@ -151,6 +165,7 @@ namespace TrunkBot.Configuration
                     GetPropertyValue(jsonToken["label_group"], "pattern");
 
             return new PlasticSCM(
+                GetBoolValue(jsonToken["code_review_group"], "is_enabled", false),
                 BuildStatusProperty(jsonToken["status_attribute_group"]),
                 GetBoolValue(jsonToken["label_group"], "is_enabled", false),
                 automaticLabelPattern);
@@ -178,8 +193,13 @@ namespace TrunkBot.Configuration
             if (jsonToken == null)
                 return null;
 
+            string plug = GetPropertyValue(jsonToken, "plug");
+
+            if (string.IsNullOrEmpty(plug))
+                return null;
+
             return new ContinuousIntegration(
-                GetPropertyValue(jsonToken, "plug"),
+                plug,
                 GetPropertyValue(jsonToken, "plan"),
                 GetPropertyValue(jsonToken, "planAfterCheckin"));
         }

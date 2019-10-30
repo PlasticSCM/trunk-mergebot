@@ -195,7 +195,7 @@ namespace TrunkBot
             {
                 for (int i = 0; i < branches.Count; i++)
                 {
-                    if (!branches[i].Repository.Equals(repository))
+                    if (!RepositoryNameComparer.IsSameName(branches[i].Repository, repository))
                         continue;
 
                     if (!branches[i].Id.Equals(branchId))

@@ -22,4 +22,10 @@
             Comment = comment;
         }
     }
+
+    internal class BranchWithReview
+    {
+        internal Branch Branch;
+        internal Review Review;
+    }
 }

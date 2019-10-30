@@ -21,6 +21,8 @@ namespace TrunkBot.Api
         internal NotifyApi Notify { get; private set; }
         internal CIApi CI { get; private set; }
         internal LabelApi Labels { get; private set; }
+        internal AttributeApi Attributes { get; private set; }
+        internal CodeReviewApi CodeReviews { get; private set; }
 
         internal RestApi(string serverUrl, string apiKey)
         {
@@ -33,6 +35,8 @@ namespace TrunkBot.Api
             Notify = new NotifyApi(mBaseUri, apiKey);
             CI = new CIApi(mBaseUri, apiKey);
             Labels = new LabelApi(mBaseUri, apiKey);
+            Attributes = new AttributeApi(mBaseUri, apiKey);
+            CodeReviews = new CodeReviewApi(mBaseUri, apiKey);
         }
 
         internal BranchModel GetBranch(
@@ -113,6 +117,29 @@ namespace TrunkBot.Api
                 endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
         }
 
+        internal MergeToAllowedResponse IsMergeAllowed(
+            RestApi restApi, 
+            string repoName, 
+            string sourceBranchName, 
+            string destinationBranchName)
+        {
+            Uri endpoint = ApiUris.GetFullUri(
+                mBaseUri, 
+                ApiEndpoints.IsMergeAllowed, 
+                repoName, 
+                FormatTargetName(sourceBranchName),
+                FormatTargetName(destinationBranchName));
+
+            string actionDescription = string.Format(
+                "checking whether is merge allowed on rep {0} from '{1}' to '{2}'",
+                repoName,
+                sourceBranchName,
+                destinationBranchName);
+
+            return Internal.MakeApiRequest<MergeToAllowedResponse>(
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
+        }
+
         internal void DeleteShelve(string repoName, int shelveId)
         {
             Uri endpoint = ApiUris.GetFullUri(
@@ -138,6 +165,31 @@ namespace TrunkBot.Api
 
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.Find, repoName, query, queryDateFormat, fieldsQuery);
+
+            return Internal.MakeApiRequest<JArray>(
+                endpoint, HttpMethod.Get, actionDescription, mApiKey);
+        }
+
+        internal JArray FindBranchesWithReviews(
+            string repoName,
+            string reviewConditions,
+            string branchConditions,
+            string queryDateFormat,
+            string actionDescription,
+            string[] fields)
+        {
+            string fieldsQuery = string.Empty;
+            if (fields != null && fields.Length > 0)
+                fieldsQuery = string.Join(",", fields);
+
+            Uri endpoint = ApiUris.GetFullUri(
+                mBaseUri, 
+                ApiEndpoints.FindBranchesWithReviews, 
+                repoName, 
+                reviewConditions, 
+                branchConditions, 
+                queryDateFormat, 
+                fieldsQuery);
 
             return Internal.MakeApiRequest<JArray>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
@@ -321,12 +373,129 @@ namespace TrunkBot.Api
             internal GetPlanStatusResponse GetPlanStatus(
                 string ciName, string planName, string buildId)
             {
+                Uri endpoint = null;
+                try
+                {
+                    endpoint = ApiUris.GetFullUri(
+                        mBaseUri, ApiEndpoints.CI.GetPlanStatus,
+                        ciName, buildId, planName);
+
+                    return Internal.MakeApiRequest<GetPlanStatusResponse>(
+                        endpoint, HttpMethod.Get, "retrieve CI plan status", mApiKey);
+                }
+                catch (Exception e)
+                {
+                    mLog.WarnFormat(
+                        "An error occurred trying to query " +
+                        "the get plan status endpoint {0}",
+                        endpoint == null ? string.Empty : endpoint.AbsolutePath);
+
+                    if (!IsEndpointNotFoundException(e))
+                        throw;
+
+                    if (planName.IndexOf("/") >= 0)
+                    {
+                        mLog.FatalFormat(
+                            "Your Plastic Server version does not support querying the build " +
+                            "status of a plan path (plan name with slashes). Your CI plan name is [{0}]." +
+                            "Please upgrade your Plastic Server version", planName);
+
+                        throw;
+                    }
+
+                    return GetLegacyPlanStatus(ciName, planName, buildId);
+                }
+            }
+
+            bool IsEndpointNotFoundException(Exception e)
+            {
+                if (e.InnerException == null)
+                    return false;
+
+                if (!(e.InnerException is WebException))
+                    return false;
+
+                WebException webEx = e.InnerException as WebException;
+
+                if (webEx.Status != WebExceptionStatus.ProtocolError)
+                    return false;
+
+                if (!(webEx.Response is HttpWebResponse))
+                    return false;
+
+                HttpWebResponse webExResponse = webEx.Response as HttpWebResponse;
+
+                return webExResponse.StatusCode == HttpStatusCode.NotFound;
+            }
+
+            GetPlanStatusResponse GetLegacyPlanStatus(
+                string ciName, string planName, string buildId)
+            {
                 Uri endpoint = ApiUris.GetFullUri(
-                    mBaseUri, ApiEndpoints.CI.GetPlanStatus,
+                    mBaseUri, ApiEndpoints.CI.DeprecatedGetPlanStatus,
                     ciName, planName, buildId);
 
+                mLog.WarnFormat(
+                    "Falling back to the legacy get plan status endpoint {0}",
+                    endpoint == null ? string.Empty : endpoint.AbsolutePath);
+
                 return Internal.MakeApiRequest<GetPlanStatusResponse>(
-                    endpoint, HttpMethod.Get, "retrieve CI plan status", mApiKey);
+                    endpoint, HttpMethod.Get, "retrieve CI plan status - deprecated", mApiKey);
+            }
+
+            readonly Uri mBaseUri;
+            readonly string mApiKey;
+        }
+
+        internal class AttributeApi
+        {
+            internal AttributeApi(Uri baseUri, string apiKey)
+            {
+                mBaseUri = baseUri;
+                mApiKey = apiKey;
+            }
+
+            internal SingleResponse Create(string repoName, CreateAttributeRequest request)
+            {
+                Uri endpoint = ApiUris.GetFullUri(
+                    mBaseUri, ApiEndpoints.CreateAttribute, repoName);
+
+                string actionDescription = string.Format(
+                    "create attribute name {0} on repo {1}", request.Name, repoName);
+
+                return Internal.MakeApiRequest<CreateAttributeRequest, SingleResponse>(
+                    endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
+            }
+
+            readonly Uri mBaseUri;
+            readonly string mApiKey;
+        }
+
+        internal class CodeReviewApi
+        {
+            internal CodeReviewApi(Uri baseUri, string apiKey)
+            {
+                mBaseUri = baseUri;
+                mApiKey = apiKey;
+            }
+
+            internal void UpdateReview(
+                string repoName, string reviewId, UpdateReviewRequest request)
+            {
+                Uri endpoint = ApiUris.GetFullUri(
+                    mBaseUri, 
+                    ApiEndpoints.UpdateReviewStatus,
+                    repoName,
+                    reviewId);
+
+                string actionDescription = string.Format(
+                    "update review id {0} to status {1} and title {2}",
+                    reviewId,
+                    request.Status,
+                    request.Title);
+
+                Internal.MakeApiRequest<UpdateReviewRequest>(
+                    endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
             }
 
             readonly Uri mBaseUri;
@@ -554,17 +723,17 @@ namespace TrunkBot.Api
         static class WebServiceException
         {
             internal static Exception AdaptException(
-                WebException ex, string actionDescription, Uri endpoint)
+                WebException webEx, string actionDescription, Uri endpoint)
             {
-                string message = GetExceptionMessage(ex, endpoint);
+                string message = GetExceptionMessage(webEx, endpoint);
                 LogException(
                     actionDescription,
                     message,
-                    ex.StackTrace,
+                    webEx.StackTrace,
                     endpoint,
-                    GetStatusCode(ex.Response));
+                    GetStatusCode(webEx.Response));
 
-                return new Exception(message);
+                return new Exception(message, webEx);
             }
 
             static HttpStatusCode GetStatusCode(WebResponse exceptionResponse)
