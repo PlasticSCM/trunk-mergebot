@@ -1,16 +1,16 @@
 ﻿namespace TrunkBot
 {
-    internal class Branch
+    public class Branch
     {
-        internal readonly string Repository;
-        internal readonly string Id;
-        internal string FullName;
-        internal readonly string Owner;
-        internal readonly string Comment;
+        public readonly string Repository;
+        public readonly int Id;
+        public string FullName;
+        public readonly string Owner;
+        public readonly string Comment;
 
-        internal Branch(
+        public Branch(
             string repository,
-            string id,
+            int id,
             string fullName,
             string owner,
             string comment)

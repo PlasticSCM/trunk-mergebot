@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 
-using log4net;
+using Codice.LogWrapper;
 
 using Newtonsoft.Json.Linq;
 
@@ -66,12 +66,21 @@ namespace TrunkBot.Configuration
             internal readonly string Plug;
             internal readonly string PlanBranch;
             internal readonly string PlanAfterCheckin;
+            internal readonly string[] BranchAttributeNamesToForwardBeforeCheckin;
+            internal readonly string[] BranchAttributeNamesToForwardAfterCheckin;
 
-            internal ContinuousIntegration(string plug, string planBranch, string planAfterCheckin)
+            internal ContinuousIntegration(
+                string plug, 
+                string planBranch, 
+                string planAfterCheckin,
+                string[] branchAttributeNamesToForwardBeforeCheckin,
+                string[] branchAttributeNamesToForwardAfterCheckin)
             {
                 Plug = plug;
                 PlanBranch = planBranch;
                 PlanAfterCheckin = planAfterCheckin;
+                BranchAttributeNamesToForwardBeforeCheckin = branchAttributeNamesToForwardBeforeCheckin;
+                BranchAttributeNamesToForwardAfterCheckin = branchAttributeNamesToForwardAfterCheckin;
             }
         }
 
@@ -110,6 +119,17 @@ namespace TrunkBot.Configuration
                 FailedValue = failedValue;
                 MergedValue = mergedValue;
             }
+
+            internal string[] GetValues()
+            {
+                return new string[]
+                {
+                    ResolvedValue,
+                    TestingValue,
+                    FailedValue,
+                    MergedValue
+                };
+            }
         }
 
         internal readonly string Server;
@@ -117,31 +137,17 @@ namespace TrunkBot.Configuration
         internal readonly string TrunkBranch;
         internal readonly string BranchPrefix;
         internal readonly string UserApiKey;
+        internal readonly bool QueueAgainOnFail;
         internal readonly PlasticSCM Plastic;
         internal readonly IssueTracker Issues;
         internal readonly ContinuousIntegration CI;
         internal readonly Notifier Notifications;
 
-        internal static TrunkBotConfiguration BuidFromConfigFile(string configFile)
+        internal static TrunkBotConfiguration BuildFromConfigFile(string configFile)
         {
             try
             {
-                string fileContent = File.ReadAllText(configFile);
-                JObject jsonObject = JObject.Parse(fileContent);
-
-                if (jsonObject == null)
-                    return null;
-
-                return new TrunkBotConfiguration(
-                    GetPropertyValue(jsonObject, "server"),
-                    GetPropertyValue(jsonObject, "repository"),
-                    GetPropertyValue(jsonObject, "trunk_branch"),
-                    GetPropertyValue(jsonObject, "branch_prefix"),
-                    GetPropertyValue(jsonObject, "bot_user"),
-                    BuildPlasticSCM(jsonObject["plastic_group"]),
-                    BuildIssueTracker(jsonObject["issues_group"]),
-                    BuildContinuousIntegration(jsonObject["ci_group"]),
-                    BuildNotifier(jsonObject["notifier_group"]));
+                return BuildFromString(File.ReadAllText(configFile));
             }
             catch (Exception ex)
             {
@@ -149,9 +155,28 @@ namespace TrunkBot.Configuration
                     configFile, ex.Message);
                 mLog.DebugFormat("StackTrace:{0}{1}",
                     Environment.NewLine, ex.StackTrace);
+                return null;
             }
+        }
 
-            return null;
+        internal static TrunkBotConfiguration BuildFromString(string configString)
+        {
+            JObject jsonObject = JObject.Parse(configString);
+
+            if (jsonObject == null)
+                return null;
+
+            return new TrunkBotConfiguration(
+                GetPropertyValue(jsonObject, "server"),
+                GetPropertyValue(jsonObject, "repository"),
+                GetPropertyValue(jsonObject, "trunk_branch"),
+                GetPropertyValue(jsonObject, "branch_prefix"),
+                GetPropertyValue(jsonObject, "bot_user"),
+                GetBoolValue(jsonObject, "queue_again_on_fail", false),
+                BuildPlasticSCM(jsonObject["plastic_group"]),
+                BuildIssueTracker(jsonObject["issues_group"]),
+                BuildContinuousIntegration(jsonObject["ci_group"]),
+                BuildNotifier(jsonObject["notifier_group"]));
         }
 
         static PlasticSCM BuildPlasticSCM(JToken jsonToken)
@@ -201,7 +226,11 @@ namespace TrunkBot.Configuration
             return new ContinuousIntegration(
                 plug,
                 GetPropertyValue(jsonToken, "plan"),
-                GetPropertyValue(jsonToken, "planAfterCheckin"));
+                GetPropertyValue(jsonToken, "planAfterCheckin"),
+                GetCommaOrSemicolonSeparatedValues(
+                    GetPropertyValue(jsonToken, "branchAttributesToForward")),
+                GetCommaOrSemicolonSeparatedValues(
+                    GetPropertyValue(jsonToken, "branchAttributesToForwardAfterCheckin")));
         }
 
         static Notifier BuildNotifier(JToken jsonToken)
@@ -217,7 +246,7 @@ namespace TrunkBot.Configuration
             return new Notifier(
                 plug,
                 GetPropertyValue(jsonToken, "user_profile_field"),
-                GetFixedRecipientsArray(GetPropertyValue(jsonToken, "fixed_recipients")));
+                GetCommaOrSemicolonSeparatedValues(GetPropertyValue(jsonToken, "fixed_recipients")));
         }
 
         static StatusProperty BuildStatusProperty(JToken jsonToken)
@@ -233,12 +262,12 @@ namespace TrunkBot.Configuration
                 GetPropertyValue(jsonToken, "merged_value"));
         }
 
-        static string[] GetFixedRecipientsArray(string fixedRecipients)
+        static string[] GetCommaOrSemicolonSeparatedValues(string field)
         {
-            if (fixedRecipients == null)
+            if (field == null)
                 return null;
 
-            string[] result = fixedRecipients.Split(
+            string[] result = field.Split(
                 new char[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
 
             for (int i = 0; i < result.Length; i++)
@@ -305,6 +334,7 @@ namespace TrunkBot.Configuration
             string trunkBranch,
             string branchPrefix,
             string userApiKey,
+            bool queueAgainOnFail,
             PlasticSCM plastic,
             IssueTracker issues,
             ContinuousIntegration ci,
@@ -315,12 +345,13 @@ namespace TrunkBot.Configuration
             TrunkBranch = trunkBranch;
             BranchPrefix = branchPrefix;
             UserApiKey = userApiKey;
+            QueueAgainOnFail = queueAgainOnFail;
             Plastic = plastic;
             Issues = issues;
             CI = ci;
             Notifications = notifications;
         }
 
-        static readonly ILog mLog = LogManager.GetLogger("TrunkBotConfiguration");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-TrunkBotConfiguration");
     }
 }

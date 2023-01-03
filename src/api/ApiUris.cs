@@ -1,23 +1,15 @@
 ﻿using System;
-using System.Net;
+using System.Linq;
 
 namespace TrunkBot.Api
 {
-    internal static class ApiUris
+    public static class ApiUris
     {
-        internal static Uri GetFullUri(Uri baseUri, string partialUri)
+        public static Uri GetFullUri(Uri baseUri, string partialUri, params string[] args)
         {
-            return new Uri(baseUri, partialUri);
-        }
-
-        internal static Uri GetFullUri(Uri baseUri, string partialUri, params string[] args)
-        {
-            string[] requestParams = new string[args.Length];
-            for (int i = 0; i < args.Length; i++)
-                requestParams[i] = Uri.EscapeDataString(args[i]);
-
-            string endpoint = string.Format(partialUri, requestParams);
-            return new Uri(baseUri, endpoint);
+            return new Uri(baseUri, string.Format(
+                partialUri.TrimStart('/'),
+                args.Select(arg => Uri.EscapeDataString(arg)).ToArray<object>()));
         }
     }
 

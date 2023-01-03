@@ -5,15 +5,15 @@ namespace TrunkBot
     public class Review
     {
         public readonly string Repository;
-        public readonly string ReviewId;
-        public readonly string BranchId;
+        public readonly int ReviewId;
+        public readonly int BranchId;
         public readonly string ReviewStatus;
         public readonly string ReviewTitle;
 
         public Review(
             string repository,
-            string reviewId,
-            string branchId,
+            int reviewId,
+            int branchId,
             string reviewStatus,
             string reviewTitle)
         {
@@ -30,31 +30,34 @@ namespace TrunkBot
                 DELETED_STATUS, StringComparison.InvariantCultureIgnoreCase);
         }
 
-        internal bool IsApproved()
+        internal bool IsReviewed()
         {
             return ReviewStatus != null && ReviewStatus.Trim().Equals(
-                APPROVED_STATUS, StringComparison.InvariantCultureIgnoreCase);
+                REVIEWED_STATUS, StringComparison.InvariantCultureIgnoreCase);
         }
 
         internal static string ParseStatusId(int parsedInt)
         {
-            if (parsedInt == -1)
+            if (parsedInt == DELETED_STATUS_ID)
                 return DELETED_STATUS;
-            if (parsedInt == 0)
-                return PENDING_STATUS;
-            if (parsedInt == 1)
-                return APPROVED_STATUS;
-            if (parsedInt == 2)
-                return DISCARDED_STATUS;
+            if (parsedInt == UNDER_REVIEW_STATUS_ID)
+                return UNDER_REVIEW_STATUS;
+            if (parsedInt == REVIEWED_STATUS_ID)
+                return REVIEWED_STATUS;
+            if (parsedInt == REWORK_REQUIRED_STATUS_ID)
+                return REWORK_REQUIRED_STATUS;
 
             return string.Empty;
         }
 
-        internal const int PENDING_STATUS_ID = 0;
+        const int DELETED_STATUS_ID = -1;
+        internal const int UNDER_REVIEW_STATUS_ID = 0;
+        const int REVIEWED_STATUS_ID = 1;
+        const int REWORK_REQUIRED_STATUS_ID = 2;
 
         const string DELETED_STATUS = "Deleted";
-        const string PENDING_STATUS = "Pending";
-        const string APPROVED_STATUS = "Approved";
-        const string DISCARDED_STATUS = "Discarded";
+        const string UNDER_REVIEW_STATUS = "Under review";
+        const string REVIEWED_STATUS = "Reviewed";
+        const string REWORK_REQUIRED_STATUS = "Rework required";
     }
 }

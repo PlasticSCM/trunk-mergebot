@@ -1,112 +1,92 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}</ProjectGuid>
+    <NoWarn>$(NoWarn);NU1605</NoWarn>
     <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
     <RootNamespace>TrunkBot</RootNamespace>
     <AssemblyName>trunkbot</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <TargetFrameworkProfile />
+    <EnableDefaultItems>false</EnableDefaultItems>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>..\bin\Debug\trunkbot\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>..\bin\Release\trunkbot\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="log4net, Version=2.0.8.0, Culture=neutral, PublicKeyToken=669e0ddf0bb1aa2a, processorArchitecture=MSIL">
-      <HintPath>packages\log4net.2.0.8\lib\net45-full\log4net.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>packages\Newtonsoft.Json.11.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
-    <Reference Include="websocket-sharp, Version=1.0.2.59611, Culture=neutral, PublicKeyToken=5660b08a1845a91e, processorArchitecture=MSIL">
-      <HintPath>packages\WebSocketSharp.1.0.3-rc11\lib\websocket-sharp.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="linkedcode\Configurator.cs" />
+    <Compile Include="linkedcode\ContextProperties.cs" />
+    <Compile Include="linkedcode\ILog.cs" />
+    <Compile Include="linkedcode\LogManager.cs" />
+    <Compile Include="linkedcode\NetLogger.cs"  />
+    <Compile Include="linkedcode\IContinuousIntegrationPlugService.cs" />
+    <Compile Include="linkedcode\IGetUserProfile.cs" />
+    <Compile Include="linkedcode\IIssueTrackerPlugService.cs" />
+    <Compile Include="linkedcode\INotifierPlugService.cs" />
+    <Compile Include="linkedcode\INotifyMergebotTriggerActions.cs" />
+    <Compile Include="linkedcode\IReportMerge.cs" />
+    <Compile Include="linkedcode\IRepositoryOperationsForMergebot.cs" />
+    <Compile Include="linkedcode\MergeReport.cs" />
+    <Compile Include="linkedcode\MergeToResponse.cs" />
     <Compile Include="api\ApiUris.cs" />
     <Compile Include="api\requests\ChangeAttributeRequest.cs" />
     <Compile Include="api\requests\CreateAttributeRequest.cs" />
     <Compile Include="api\requests\CreateLabelRequest.cs" />
     <Compile Include="api\requests\LaunchPlanRequest.cs" />
-    <Compile Include="api\requests\MergeReport.cs" />
     <Compile Include="api\requests\MergeToRequest.cs" />
     <Compile Include="api\requests\NotifyMessageRequest.cs" />
     <Compile Include="api\requests\SetIssueFieldRequest.cs" />
     <Compile Include="api\requests\UpdateReviewRequest.cs" />
     <Compile Include="api\responses\BranchModel.cs" />
-    <Compile Include="api\responses\ChangesetModel.cs" />
     <Compile Include="api\responses\GetPlanStatusResponse.cs" />
-    <Compile Include="api\responses\MergeToResponse.cs" />
     <Compile Include="api\responses\SingleResponse.cs" />
     <Compile Include="api\RestApi.cs" />
-    <Compile Include="labeling\AutomaticLabeler.cs" />
+    <Compile Include="AttributeComment.cs" />
     <Compile Include="Branch.cs" />
     <Compile Include="BranchesQueueStorage.cs" />
     <Compile Include="BranchSpec.cs" />
     <Compile Include="BuildMergeReport.cs" />
+    <Compile Include="BuildProperties.cs" />
     <Compile Include="ChangeTaskStatus.cs" />
     <Compile Include="configuration\ToolConfig.cs" />
     <Compile Include="configuration\TrunkBotConfiguration.cs" />
     <Compile Include="configuration\TrunkBotConfigurationChecker.cs" />
-    <Compile Include="FindQueries.cs" />
-    <Compile Include="labeling\Label.cs" />
+    <Compile Include="ContinuousIntegrationPlugService.cs" />
+    <Compile Include="GetUserProfile.cs" />
+    <Compile Include="IssueTrackerPlugService.cs" />
+    <Compile Include="labeling\AutomaticLabeler.cs" />
     <Compile Include="labeling\AutomaticLabeler.NewLabelNameGenerator.cs" />
     <Compile Include="labeling\AutomaticLabeler.PatternTranslator.cs" />
     <Compile Include="labeling\AutomaticLabeler.Tokens.cs" />
     <Compile Include="MergeToOperations.cs" />
-    <Compile Include="messages\ParseBuildProperties.cs" />
     <Compile Include="messages\ParseEvent.cs" />
     <Compile Include="Notifier.cs" />
+    <Compile Include="NotifierPlugService.cs" />
     <Compile Include="ParseUserProfile.cs" />
+    <Compile Include="PlasticRepositoryOperationsForTrunkbot.cs" />
     <Compile Include="ProcessBranch.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="ReportMerge.cs" />
     <Compile Include="RepositoryNameComparer.cs" />
+    <Compile Include="ResolveUserProfile.cs" />
     <Compile Include="Review.cs" />
     <Compile Include="ReviewsStorage.cs" />
     <Compile Include="TrunkBotArguments.cs" />
     <Compile Include="TrunkBotArgumentsChecker.cs" />
     <Compile Include="TrunkMergebot.cs" />
-    <Compile Include="TrunkMergebotApi.cs" />
-    <Compile Include="ResolveUserProfile.cs" />
-    <Compile Include="websockets\WebSocketClient.cs" />
+    <Compile Include="BuildPlan.cs" />
     <Compile Include="websockets\StartupMessages.cs" />
+    <Compile Include="websockets\WebSocketClient.cs" />
+    <Compile Include="websockets\WebSocketTrigger.cs" />
   </ItemGroup>
+
   <ItemGroup>
     <None Include="configuration\trunkbot.conf" />
-    <None Include="configuration\trunkbot.config.template">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="configuration\trunkbot.definition.conf">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="configuration\trunkbot.log.conf">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="packages.config" />
+    <None Include="configuration\trunkbot.config.template" />
+    <None Include="configuration\trunkbot.definition.conf" />
+    <None Include="configuration\trunkbot.log.conf" />
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <ItemGroup>
+    <PackageReference Include="log4net" Version="2.0.14" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
+    <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
+  </ItemGroup>
+
 </Project>

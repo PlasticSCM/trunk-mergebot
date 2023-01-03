@@ -3,7 +3,7 @@ using System.Threading;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 
-using log4net;
+using Codice.LogWrapper;
 using WebSocketSharp;
 
 namespace TrunkBot.WebSockets
@@ -28,7 +28,9 @@ namespace TrunkBot.WebSockets
             mWebSocket.OnClose += OnClose;
             mWebSocket.OnError += OnError;
             mWebSocket.Log.Output = LogOutput;
-            mWebSocket.SslConfiguration.ServerCertificateValidationCallback += CertificateValidation;
+
+            if (mWebSocket.IsSecure)
+                mWebSocket.SslConfiguration.ServerCertificateValidationCallback += CertificateValidation;
 
             mEventNamesToSubscribe = eventNamesToSubscribe;
 
@@ -111,7 +113,7 @@ namespace TrunkBot.WebSockets
 
         readonly WebSocket mWebSocket;
 
-        readonly ILog mLog = LogManager.GetLogger("websocket");
+        readonly ILog mLog = LogManager.GetLogger("TrunkBot-WebSocketClient");
         readonly string mName;
         readonly string mApiKey;
         readonly string[] mEventNamesToSubscribe;

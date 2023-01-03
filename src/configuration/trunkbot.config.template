@@ -30,6 +30,12 @@
     "description": "The API Key of the Plastic SCM user that the mergebot will use to checkin and perform API calls."
   },
   {
+    "name": "queue_again_on_fail",
+    "displayName": "Re-enqueue branches that failed due to changes detected in the trunk branch",
+    "type": "bool",
+    "description": "If new changesets reach your trunk branch while a merge changeset is being tested, it won't be possible to apply it. If you set this, the bot will enqueue the task again and retry with a fresh new merge including the last changes."
+  },
+  {
     "name":"plastic_group",
     "displayName":"Branch lifecycle and automatic labels",
     "type":"group",
@@ -87,8 +93,8 @@
           }
         ]
       },
-	  {
-	    "name":"label_group",
+      {
+        "name":"label_group",
         "displayName":"Automatic labeling",
         "type":"group",
         "description":"Label the changeset after a successful merge",
@@ -99,14 +105,14 @@
             "type":"bool",
             "description":"The mergebot will label the changeset created during the merge. It can use 2 options: number autoincrement, and dates."
           },
-		  {
+          {
             "name":"pattern",
             "displayName":"Label pattern",
             "type":"string",
             "description":"Option 1: ${AUTO_INCREMENT_NUMBER}, Option 2: ${BUILD_DATE_FORMATTED, <a_valid_date_format>}. Example: 'LABEL.${AUTO_INCREMENT_NUMBER}_${BUILD_DATE_FORMATTED, yyyy-MM-dd}' will create LABEL.128.2018-10-23. Nested variables are not allowed. Go to the 'Learn more' section of 'trunk-bot' under the 'Mergebot Types' section for further info."
           }
-		]
-	  }
+        ]
+      }
     ]
   },
   {
@@ -178,24 +184,36 @@
     "displayName":"CI Integration",
     "type":"group",
     "description":"",
-    "items":[
+    "items": [
       {
-        "name":"plug",
-        "displayName":"Plug",
-        "type":"ci_plug",
-        "description":"The name of the 'CI plug' that the bot uses to trigger builds and pass tests."
+        "name": "plug",
+        "displayName": "Plug",
+        "type": "ci_plug",
+        "description": "The name of the 'CI plug' that the bot uses to trigger builds and pass tests."
       },
       {
-        "name":"plan",
-        "displayName":"Plan for build & test a branch",
-        "type":"string",
-        "description":"The name of the plan to run to test a task."
+        "name": "plan",
+        "displayName": "Plan for build & test a branch",
+        "type": "string",
+        "description": "The name of the plan to run to test a task."
       },
       {
-        "name":"planAfterCheckin",
-        "displayName":"Plan to run after checking-in a branch",
-        "type":"string",
-        "description":"The name of the plan to run after successful checkin of a branch in specified trunk branch (e.g. Use this plan to deploy your code). Leave this field empty if you don't want to run any plan after checkin."
+        "name": "branchAttributesToForward",
+        "displayName": "Branch attributes to forward to the build & test plan",
+        "type": "string",
+        "description": "Comma-separated list of branch attribute names to forward to the underlying CI system as key-value parameters. REMARKS: the trunkbot won't create any of these attribute names in the repository automatically. In case the attribute does not exist, or a branch does not have such attribute set, the trunkbot will create and sent the property with empty value to the CI plan anyway. Also notice that Jenkins will add the 'PLASTICSCM_MERGEBOT_' prefix to the property name (the name of the attribute)."
+      },
+      {
+        "name": "planAfterCheckin",
+        "displayName": "Plan to run after checking-in a branch",
+        "type": "string",
+        "description": "The name of the plan to run after successful checkin of a branch in specified trunk branch (e.g. Use this plan to deploy your code). Leave this field empty if you don't want to run any plan after checkin."
+      },
+      {
+        "name": "branchAttributesToForwardAfterCheckin",
+        "displayName": "Branch attributes to forward to the after-checkin plan",
+        "type": "string",
+        "description": "Similar to the branch attributes to forward to the build & test plan as specified above. But here you might specify a different list of branch attributes to forward to the underlying CI system for the after-checkin plan, in case it is triggered because of a successful build of a branch."
       }
     ]
   },

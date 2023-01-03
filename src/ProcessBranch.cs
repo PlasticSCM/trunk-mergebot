@@ -1,14 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
-using log4net;
-
-using TrunkBot.Api;
-using TrunkBot.Api.Requests;
-using TrunkBot.Api.Responses;
+using Codice.CM.Server.Devops;
+using Codice.LogWrapper;
 using TrunkBot.Configuration;
 using TrunkBot.Labeling;
-using TrunkBot.Messages;
+using MergeResultStatus = TrunkBot.MergeToOperations.Result.ResultStatus;
+using BuildType = TrunkBot.TrunkMergebot.BuildInProgress.BuildType;
 
 namespace TrunkBot
 {
@@ -18,271 +18,786 @@ namespace TrunkBot
         {
             NotReady,
             Ok,
-            Failed
+            Failed,
+            QueueAgain,
+            Cancelled
         };
 
-        internal static Result TryProcessBranch(
-            RestApi restApi,
+        internal static async Task<Result> TryResumeProcessBranchInAfterCheckinBuildStage(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            IReportMerge reportMerge,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
             Branch branch,
             TrunkBotConfiguration botConfig,
             string botName,
-            string codeReviewsStorageFile)
+            ReviewsStorage reviewsStorage,
+            int csetId,
+            string buildId,
+            int initBuildTime,
+            CancellationToken cancellationToken)
         {
-            int shelveId = -1;
+            string taskNumber = string.Empty;
+            MergeReport mergeReport = null;
+            try
+            {
+                taskNumber = GetTaskNumber(branch.FullName, botConfig.BranchPrefix);
+                string repId = await repoApi.GetBranchRepId(
+                    branch.Repository, branch.FullName, cancellationToken);
+                mergeReport = BuildMergeReport.Build(repId, branch.Id);
 
+                Result buildResult = await TryResumeAfterCheckinPlan(
+                    notifier,
+                    ci,
+                    userProfile,
+                    storeBuildInProgress,
+                    branch,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    csetId,
+                    buildId,
+                    initBuildTime,
+                    cancellationToken);
+
+                if (buildResult == Result.Cancelled)
+                    return buildResult;
+
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
+
+                return buildResult;
+            }
+            catch (OperationCanceledException)
+            {
+                return Result.Cancelled;
+            }
+            catch (Exception ex)
+            {
+                await ReportProcessBranchError(
+                    ex,
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
+                    branch,
+                    botName,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    reviewsStorage);
+
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
+
+                return Result.Failed;
+            }
+        }
+
+        internal static async Task<Result> TryResumeProcessBranchInBuildStage(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            IReportMerge reportMerge,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
+            Branch branch,
+            TrunkBotConfiguration botConfig,
+            string botName,
+            ReviewsStorage reviewStorage,
+            int shelveId,
+            List<MergeToXlinkChangeset> xlinkShelves,
+            string buildId,
+            int initBuildTime,
+            CancellationToken cancellationToken)
+        {
+            string taskNumber = string.Empty;
+            MergeReport mergeReport = null;
+            try
+            {
+                taskNumber = GetTaskNumber(branch.FullName, botConfig.BranchPrefix);
+
+                string repId = await repoApi.GetBranchRepId(
+                    branch.Repository, branch.FullName, cancellationToken);
+                mergeReport = BuildMergeReport.Build(repId, branch.Id);
+
+                Result buildResult = await TryResumeBuildTask(
+                    issueTracker,
+                    notifier,
+                    ci,
+                    repoApi,
+                    userProfile,
+                    storeBuildInProgress,
+                    branch,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    shelveId,
+                    buildId,
+                    initBuildTime,
+                    reviewStorage,
+                    cancellationToken);
+
+                if (buildResult == Result.Cancelled)
+                    return buildResult;
+
+                if (buildResult == Result.Failed)
+                {
+                    ReportMerge(
+                        reportMerge,
+                        branch.Repository,
+                        branch.FullName,
+                        botName,
+                        mergeReport);
+
+                    return buildResult;
+                }
+
+                IssueInfo issueInfo =
+                    await GetIssueInfo(issueTracker, taskNumber, botName, botConfig.Issues);
+
+                string comment = GetComment(
+                    branch.FullName, issueInfo != null ? issueInfo.Title : branch.Comment, botName);
+
+                buildResult = await CheckinShelveAndPostActionsAfterSuccessfulBuild(
+                    issueTracker,
+                    notifier,
+                    ci,
+                    repoApi,
+                    userProfile,
+                    storeBuildInProgress,
+                    branch,
+                    botName,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    shelveId,
+                    xlinkShelves,
+                    comment,
+                    reviewStorage,
+                    cancellationToken);
+
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
+
+                return buildResult;
+            }
+            catch (OperationCanceledException)
+            {
+                return Result.Cancelled;
+            }
+            catch (Exception ex)
+            {
+                await ReportProcessBranchError(
+                    ex,
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
+                    branch,
+                    botName,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    reviewStorage);
+
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
+
+                return Result.Failed;
+            }
+        }
+
+        internal static async Task<Result> TryProcessBranch(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            IReportMerge reportMerge,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
+            Branch branch,
+            TrunkBotConfiguration botConfig,
+            string botName,
+            ReviewsStorage reviewsStorage,
+            CancellationToken cancellationToken)
+        {
             string taskNumber = null;
             MergeReport mergeReport = null;
             try
             {
-                mLog.InfoFormat("Getting task number of branch {0} ...", branch.FullName);
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
+
+                mLog.InfoFormat("[{0}] Getting task number of branch {1} ...",
+                    botName, branch.FullName);
+
                 taskNumber = GetTaskNumber(branch.FullName, botConfig.BranchPrefix);
-                if (!IsTaskReady(
-                    restApi,
-                    taskNumber,
-                    botConfig.Issues,
-                    botConfig.Plastic.IsApprovedCodeReviewFilterEnabled,
-                    branch.Repository,
-                    branch.Id,
-                    codeReviewsStorageFile))
+                if (!await IsTaskReady(
+                        issueTracker,
+                        taskNumber,
+                        botConfig.Issues,
+                        botConfig.Plastic.IsApprovedCodeReviewFilterEnabled,
+                        branch.Repository,
+                        branch.Id,
+                        branch.FullName,
+                        botName,
+                        reviewsStorage,
+                        cancellationToken))
                 {
                     return Result.NotReady;
                 }
 
-                if (!IsMergeAllowed(restApi, branch, botConfig.TrunkBranch))
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
+
+                if (!await repoApi.IsMergeAllowed(
+                        branch.Repository, branch.FullName, botConfig.TrunkBranch, cancellationToken))
                 {
                     mLog.WarnFormat(
-                        "Branch {0} is not yet ready to be merged. " +
+                        "[{0}] Branch {1} is not yet ready to be merged. " +
                         "Jumping to next branch in the queue...",
-                        branch.FullName);
+                        botName, branch.FullName);
 
                     return Result.NotReady;
                 }
 
-                mLog.InfoFormat("Building the merge report of task {0} ...", taskNumber);
-                mergeReport = BuildMergeReport.Build(TrunkMergebotApi.GetBranch(
-                    restApi, branch.Repository, branch.FullName));
+                mLog.InfoFormat("[{0}] Building the merge report of task {1} ...",
+                    botName, taskNumber);
 
-                string taskTittle;
-                string taskUrl;
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
 
-                if (GetIssueInfo(restApi, taskNumber, botConfig.Issues,
-                        out taskTittle, out taskUrl))
-                {
-                    BuildMergeReport.AddIssueProperty(mergeReport, taskTittle, taskUrl);
-                }
+                string repId = await repoApi.GetBranchRepId(
+                    branch.Repository, branch.FullName, cancellationToken);
+                mergeReport = BuildMergeReport.Build(repId, branch.Id);
 
-                string comment = GetComment(branch.FullName, taskTittle, botName);
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
 
-                mLog.InfoFormat("Trying to shelve server-side-merge from {0} to {1}",
-                    branch.FullName, botConfig.TrunkBranch);
+                IssueInfo issue = await GetIssueInfo(
+                    issueTracker, taskNumber, botName, botConfig.Issues);
 
-                if (!MergeToOperations.TryMergeToShelve(
-                        restApi, branch, botConfig.TrunkBranch, mergeReport,
-                        comment, taskNumber, botConfig, codeReviewsStorageFile,
-                        out shelveId))
-                    return Result.Failed;
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
 
-                mLog.InfoFormat("Testing branch {0} ...", branch.FullName);
-                if (!TryBuildTask(restApi, branch, mergeReport,
-                        taskNumber, shelveId, botConfig, codeReviewsStorageFile))
-                    return Result.Failed;
+                if (issue != null)
+                    BuildMergeReport.AddIssueProperty(mergeReport, issue.Title, issue.Url);
 
-                mLog.InfoFormat("Checking-in shelved merged {0} from {1} to {2}",
-                    shelveId, branch.FullName, botConfig.TrunkBranch);
+                string comment = GetComment(
+                    branch.FullName, issue != null ? issue.Title : branch.Comment, botName);
 
-                int csetId = -1;
-                if (!MergeToOperations.TryApplyShelve(
-                        restApi, branch, botConfig.TrunkBranch, mergeReport,
-                        comment, taskNumber, shelveId, botConfig, codeReviewsStorageFile,
-                        out csetId))
-                    return Result.Failed;
+                if (cancellationToken.IsCancellationRequested)
+                    return Result.NotReady;
 
-                mLog.InfoFormat("Checkin: Created changeset {0} in branch {1}",
-                    csetId, botConfig.TrunkBranch);
+                mLog.InfoFormat(
+                    "[{0}] Trying to shelve server-side-merge from {1} to {2}",
+                    botName, branch.FullName, botConfig.TrunkBranch);
 
-                mLog.InfoFormat("Setting branch {0} as 'integrated'...", branch.FullName);
-                ChangeTaskStatus.SetTaskAsMerged(
-                    restApi,
-                    branch,
-                    taskNumber,
-                    string.Format(
-                        "Branch {0} was correctly merged to {1}.",
-                        branch.FullName,
-                        botConfig.TrunkBranch),
-                    botConfig,
-                    codeReviewsStorageFile);
-
-                string labelName = string.Empty;
-                if (!CreateLabel(
-                    restApi,
-                    csetId,
-                    branch.FullName,
-                    botConfig.TrunkBranch,
-                    botConfig.Repository,
-                    botConfig.Plastic.IsAutoLabelEnabled,
-                    botConfig.Plastic.AutomaticLabelPattern,
-                    mergeReport,
-                    branch.Owner,
-                    botConfig.Notifications,
-                    out labelName))
-                {
-                    return Result.Failed;
-                }
-
-                if (!HasToRunPlanAfterTaskMerged(botConfig.CI))
-                    return Result.Ok;
-
-                if (!TryRunAfterCheckinPlan(
-                        restApi,
+                MergeToOperations.Result mergeResult =
+                    await MergeToOperations.TryMergeToShelve(
+                        issueTracker,
+                        notifier,
+                        repoApi,
+                        userProfile,
                         branch,
+                        botConfig.TrunkBranch,
                         mergeReport,
+                        comment,
                         taskNumber,
-                        csetId,
-                        labelName,
-                        botConfig))
+                        botConfig,
+                        reviewsStorage);
+
+                if (mergeResult.Status != MergeResultStatus.Succeed)
                 {
-                        return Result.Failed;
+                    ReportMerge(
+                        reportMerge,
+                        branch.Repository,
+                        branch.FullName,
+                        botName,
+                        mergeReport);
+
+                    return Result.Failed;
                 }
+
+                int shelveId = mergeResult.CreatedId;
+                List<MergeToXlinkChangeset> xlinkShelves = mergeResult.CreatedXlinkChangesets;
+
+                Dictionary<string, string> userDefBranchAttrsBeforeCheckin =
+                    await GetUserDefBranchAttributesValues(
+                        repoApi,
+                        branch.Repository,
+                        branch.FullName,
+                        botConfig.CI?.BranchAttributeNamesToForwardBeforeCheckin);
+
+                mLog.InfoFormat("[{0}] Testing branch {1} ...", botName, branch.FullName);
+
+                Result buildResult = await TryBuildTask(
+                    issueTracker,
+                    notifier,
+                    ci,
+                    repoApi,
+                    userProfile,
+                    storeBuildInProgress,
+                    branch,
+                    mergeReport,
+                    taskNumber,
+                    shelveId,
+                    xlinkShelves,
+                    botConfig,
+                    userDefBranchAttrsBeforeCheckin,
+                    reviewsStorage,
+                    cancellationToken);
+
+                if (buildResult == Result.Cancelled)
+                    return buildResult;
+
+                if (buildResult == Result.Failed)
+                {
+                    DeleteShelves(repoApi, branch.Repository, botName, shelveId, xlinkShelves);
+
+                    ReportMerge(
+                        reportMerge,
+                        branch.Repository,
+                        branch.FullName,
+                        botName,
+                        mergeReport);
+
+                    return buildResult;
+                }
+
+                buildResult = await CheckinShelveAndPostActionsAfterSuccessfulBuild(
+                    issueTracker,
+                    notifier,
+                    ci,
+                    repoApi,
+                    userProfile,
+                    storeBuildInProgress,
+                    branch,
+                    botName,
+                    botConfig,
+                    mergeReport,
+                    taskNumber,
+                    shelveId,
+                    xlinkShelves,
+                    comment,
+                    reviewsStorage,
+                    cancellationToken);
+
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
+
+                return buildResult;
+            }
+            catch (OperationCanceledException)
+            {
+                return Result.Cancelled;
             }
             catch (Exception ex)
             {
-                mLog.ErrorFormat(
-                    "The attempt to process task {0} failed for branch {1}: {2}",
-                    taskNumber, branch.FullName, ex.Message);
-
-                mLog.DebugFormat(
-                    "StackTrace:{0}{1}", Environment.NewLine, ex.StackTrace);
-
-                ChangeTaskStatus.SetTaskAsFailed(
-                    restApi,
+                await ReportProcessBranchError(
+                    ex,
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
                     branch,
-                    taskNumber,
-                    string.Format(
-                        "Can't process branch {0} because of an unexpected error: {1}.",
-                        branch.FullName,
-                        ex.Message),
+                    botName,
                     botConfig,
-                    codeReviewsStorageFile);
+                    mergeReport,
+                    taskNumber,
+                    reviewsStorage);
 
-                BuildMergeReport.SetUnexpectedExceptionProperty(mergeReport, ex.Message);
+                ReportMerge(
+                    reportMerge,
+                    branch.Repository,
+                    branch.FullName,
+                    botName,
+                    mergeReport);
 
                 return Result.Failed;
             }
-            finally
-            {
-                ReportMerge(restApi, branch.Repository, branch.FullName, botName, mergeReport);
+        }
 
-                SafeDeleteShelve(restApi, branch.Repository, shelveId);
+        static async Task<Result> CheckinShelveAndPostActionsAfterSuccessfulBuild(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
+            Branch branch,
+            string botName,
+            TrunkBotConfiguration botConfig,
+            MergeReport mergeReport,
+            string taskNumber,
+            int shelveId,
+            List<MergeToXlinkChangeset> xlinkShelves,
+            string comment,
+            ReviewsStorage reviewsStorage,
+            CancellationToken cancellationToken)
+        {
+            mLog.InfoFormat(
+                "[{0}] Checking-in shelved merged {1} from {2} to {3}",
+                botName, shelveId, branch.FullName, botConfig.TrunkBranch);
+
+            MergeToOperations.Result mergeResult =
+                await MergeToOperations.TryApplyShelve(
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
+                    branch,
+                    botConfig.TrunkBranch,
+                    mergeReport,
+                    comment,
+                    taskNumber,
+                    shelveId,
+                    botConfig,
+                    reviewsStorage);
+
+            DeleteShelves(repoApi, branch.Repository, botName, shelveId, xlinkShelves);
+
+            if (mergeResult.Status != MergeResultStatus.Succeed)
+            {
+                return mergeResult.Status == MergeResultStatus.QueueAgain
+                    ? Result.QueueAgain
+                    : Result.Failed;
             }
 
-            return Result.Ok;
+            mLog.InfoFormat(
+                "[{0}] Checkin: Created changeset {1} in branch {2}",
+                botName, mergeResult.CreatedId, botConfig.TrunkBranch);
+
+            mLog.InfoFormat(
+                "[{0}] Setting branch {1} as 'integrated'...",
+                botName, branch.FullName);
+
+            await ChangeTaskStatus.SetTaskAsMerged(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
+                branch,
+                taskNumber,
+                string.Format(
+                    "Branch {0} was correctly merged to {1}.",
+                    branch.FullName,
+                    botConfig.TrunkBranch),
+                botConfig,
+                reviewsStorage);
+
+            string labelName = string.Empty;
+            if (botConfig.Plastic.IsAutoLabelEnabled &&
+                !string.IsNullOrWhiteSpace(botConfig.Plastic.AutomaticLabelPattern))
+            {
+                labelName = await CreateLabel(
+                    notifier,
+                    repoApi,
+                    userProfile,
+                    mergeResult.CreatedId,
+                    branch.FullName,
+                    botConfig.TrunkBranch,
+                    botConfig.Repository,
+                    botConfig.Plastic.AutomaticLabelPattern,
+                    mergeReport,
+                    branch.Owner,
+                    botConfig.Notifications);
+
+                if (string.IsNullOrEmpty(labelName))
+                    return Result.Failed;
+            }
+
+            if (!HasToRunPlanAfterTaskMerged(botConfig.CI))
+                return Result.Ok;
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                mLog.DebugFormat(
+                    "[{0}] Operation cancelled for task {1} and branch {2}",
+                    botName, taskNumber, branch.FullName);
+
+                return Result.Failed;
+            }
+
+            Dictionary<string, string> userDefBranchAttrsAfterCheckin =
+                await GetUserDefBranchAttributesValues(
+                    repoApi,
+                    branch.Repository,
+                    branch.FullName,
+                    botConfig.CI?.BranchAttributeNamesToForwardAfterCheckin);
+
+            return await TryRunAfterCheckinPlan(
+                notifier,
+                ci,
+                repoApi,
+                userProfile,
+                storeBuildInProgress,
+                branch,
+                mergeReport,
+                taskNumber,
+                mergeResult.CreatedId,
+                labelName,
+                botConfig,
+                userDefBranchAttrsAfterCheckin,
+                cancellationToken);
         }
 
-        static bool IsMergeAllowed(RestApi restApi, Branch branch, string trunkBranch)
-        {
-            return TrunkMergebotApi.IsMergeAllowed(
-                restApi, branch.Repository, branch.FullName, trunkBranch);
-        }
-
-        static bool TryBuildTask(
-            RestApi restApi,
+        static async Task<Result> TryBuildTask(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
             Branch branch,
             MergeReport mergeReport,
             string taskNumber,
             int shelveId,
+            List<MergeToXlinkChangeset> xlinkShelves,
             TrunkBotConfiguration botConfig,
-            string codeReviewsStorageFile)
+            Dictionary<string, string> userDefBranchAttrs,
+            ReviewsStorage reviewsStorage,
+            CancellationToken cancellationToken)
         {
             if (botConfig.CI == null)
             {
-                string message =
-                    "No CI plug was set for this mergebot. Therefore, no " +
-                    "build actions for task " + taskNumber + " will be performed.";
-
-                mLog.Info(message);
-
-                Notifier.NotifyTaskStatus(
-                    restApi, branch.Owner, message, botConfig.Notifications);
-
-                return true;
+                mLog.InfoFormat(NO_CI_MESSAGE_FORMAT, taskNumber);
+                return Result.Ok;
             }
 
-            ChangeTaskStatus.SetTaskAsTesting(restApi, branch, taskNumber, string.Format(
-                "Starting to test branch {0}.", branch.FullName), botConfig);
-
-            string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
-            string scmSpecToSwitchTo = string.Format("sh:{0}@{1}", shelveId, repSpec);
-
-            string comment = string.Format(
-                "Building branch {0}", branch.FullName);
-
-            BuildProperties properties = CreateBuildProperties(
-                restApi,
+            BuildProperties properties = await CreateBuildProperties(
+                repoApi,
                 taskNumber,
                 branch.FullName,
                 string.Empty,
                 BuildProperties.StageValues.PRE_CHECKIN,
+                userDefBranchAttrs,
+                botConfig,
+                cancellationToken);
+
+            await ChangeTaskStatus.SetTaskAsTesting(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
+                branch,
+                taskNumber,
+                string.Format("Starting to test branch {0}.", branch.FullName),
                 botConfig);
 
             int iniTime = Environment.TickCount;
 
-            TrunkMergebotApi.CI.PlanResult buildResult = TrunkMergebotApi.CI.Build(
-                restApi, botConfig.CI.Plug, botConfig.CI.PlanBranch,
-                scmSpecToSwitchTo, comment, properties);
+            TrunkMergebot.BuildInProgress buildInProgress =
+                TrunkMergebot.BuildInProgress.FromShelve(
+                    branch.Repository,
+                    branch.FullName,
+                    shelveId,
+                    xlinkShelves,
+                    BuildType.Build,
+                    iniTime);
 
+            string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
+            string scmSpecToSwitchTo = string.Format("sh:{0}@{1}", shelveId, repSpec);
+            string comment = string.Format("Building branch {0}", branch.FullName);
+
+            BuildPlan.PlanResult buildResult = await BuildPlan.Build(
+                ci,
+                storeBuildInProgress,
+                buildInProgress,
+                botConfig.CI.Plug,
+                botConfig.CI.PlanBranch,
+                scmSpecToSwitchTo, 
+                comment, 
+                properties, 
+                cancellationToken);
+
+            if (buildResult == BuildPlan.PlanResult.Cancelled)
+                return Result.Cancelled;
+
+            return await PostBuildActions(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
+                branch,
+                mergeReport,
+                taskNumber,
+                buildResult,
+                iniTime,
+                botConfig,
+                reviewsStorage) ? Result.Ok : Result.Failed;
+        }
+
+        async static Task<Result> TryResumeBuildTask(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
+            Branch branch,
+            TrunkBotConfiguration botConfig,
+            MergeReport mergeReport,
+            string taskNumber,
+            int shelveId,
+            string execId,
+            int iniBuildTime,
+            ReviewsStorage reviewsStorage,
+            CancellationToken cancellationToken)
+        {
+            if (botConfig.CI == null)
+            {
+                mLog.InfoFormat(NO_CI_MESSAGE_FORMAT, taskNumber);
+                return Result.Ok;
+            }
+
+            string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
+            string scmSpecToSwitchTo = string.Format("sh:{0}@{1}", shelveId, repSpec);
+            string comment = string.Format("Building branch {0}", branch.FullName);
+
+            BuildPlan.PlanResult buildResult = await BuildPlan.ResumeBuild(
+                ci, storeBuildInProgress, botConfig.CI.Plug, botConfig.CI.PlanBranch, execId,
+                scmSpecToSwitchTo, comment, cancellationToken);
+
+            if (buildResult == BuildPlan.PlanResult.Cancelled)
+                return Result.Cancelled;
+
+            return await PostBuildActions(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
+                branch,
+                mergeReport,
+                taskNumber,
+                buildResult,
+                iniBuildTime,
+                botConfig,
+                reviewsStorage) ? Result.Ok : Result.Failed;
+        }
+
+        static async Task<bool> PostBuildActions(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            Branch branch,
+            MergeReport mergeReport,
+            string taskNumber,
+            BuildPlan.PlanResult buildResult,
+            int iniBuildTime,
+            TrunkBotConfiguration botConfig,
+            ReviewsStorage reviewsStorage)
+        {
             BuildMergeReport.AddBuildTimeProperty(mergeReport,
-                Environment.TickCount - iniTime);
+                Environment.TickCount - iniBuildTime);
 
             if (buildResult.Succeeded)
             {
                 BuildMergeReport.AddSucceededBuildProperty(mergeReport, botConfig.CI.PlanBranch);
-
                 return true;
             }
 
             BuildMergeReport.AddFailedBuildProperty(mergeReport,
                 botConfig.CI.PlanBranch, buildResult.Explanation);
 
-            ChangeTaskStatus.SetTaskAsFailed(
-                restApi,
+            await ChangeTaskStatus.SetTaskAsFailed(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
                 branch,
                 taskNumber,
                 string.Format(
-                    "Branch {0} build failed. \nReason: {1}",
+                    "Branch {0} build failed. \nExplanation: {1}",
                     branch.FullName,
                     buildResult.Explanation),
                 botConfig,
-                codeReviewsStorageFile);
+                reviewsStorage);
 
             return false;
         }
 
-        static bool CreateLabel(
-            RestApi restApi, 
+        static async Task ReportProcessBranchError(
+            Exception ex,
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            Branch branch,
+            string botName,
+            TrunkBotConfiguration botConfig,
+            MergeReport mergeReport,
+            string taskNumber,
+            ReviewsStorage reviewsStorage)
+        {
+            mLog.ErrorFormat(
+                "[{0}] The attempt to process task {1} failed for branch {2}: {3}",
+                botName, taskNumber, branch.FullName, ex.Message);
+
+            mLog.DebugFormat(
+                "StackTrace:{0}{1}", Environment.NewLine, ex.StackTrace);
+
+            await ChangeTaskStatus.SetTaskAsFailed(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
+                branch,
+                taskNumber,
+                string.Format(
+                    "Can't process branch {0} because of an unexpected error: {1}.",
+                    branch.FullName,
+                    ex.Message),
+                botConfig,
+                reviewsStorage);
+
+            BuildMergeReport.SetUnexpectedExceptionProperty(mergeReport, ex.Message);
+        }
+
+        static async Task<string> CreateLabel(
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             int csetId, 
             string branchFullName,
             string trunkBranchName,
             string repository, 
-            bool isAutoLabelEnabled, 
             string automaticLabelPattern,
             MergeReport mergeReport,
             string branchOwner,
-            TrunkBotConfiguration.Notifier notificationsConfig,
-            out string labelCreated)
+            TrunkBotConfiguration.Notifier notificationsConfig)
         {
-            labelCreated = string.Empty;
-
-            if (!isAutoLabelEnabled)
-                return true;
-
-            if (string.IsNullOrEmpty(automaticLabelPattern))
-                return true;
-
             AutomaticLabeler.Result result = null;
             try
             {
-                result = AutomaticLabeler.CreateLabel(
-                    restApi, csetId, repository, automaticLabelPattern, DateTime.Now);
+                result = await AutomaticLabeler.CreateLabel(
+                    repoApi, csetId, repository, automaticLabelPattern, DateTime.Now);
             }
             catch (Exception e)
             {
@@ -297,7 +812,7 @@ namespace TrunkBot
                     result = new AutomaticLabeler.Result(false, string.Empty, e.Message);
             }
 
-            labelCreated = result.Name;
+            string labelCreated = result.Name;
 
             BuildMergeReport.AddLabelProperty(
                 mergeReport, result.IsSuccessful, result.Name, result.ErrorMessage);
@@ -311,8 +826,9 @@ namespace TrunkBot
                     "in {1} branch, changeset cs:{2}@{3}. Error: {4}",
                     branchFullName, trunkBranchName, csetId, repository, result.ErrorMessage);
 
-            Notifier.NotifyTaskStatus(restApi, branchOwner, message, notificationsConfig);
-            return result.IsSuccessful;
+            await Notifier.NotifyTaskStatus(
+                notifier, userProfile, branchOwner, message, notificationsConfig);
+            return result.IsSuccessful ? labelCreated : string.Empty;
         }
 
         static bool HasToRunPlanAfterTaskMerged(
@@ -324,39 +840,134 @@ namespace TrunkBot
             return !string.IsNullOrEmpty(ciConfig.PlanAfterCheckin);
         }
 
-        static bool TryRunAfterCheckinPlan(
-            RestApi restApi, 
+        static async Task<Result> TryRunAfterCheckinPlan(
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
             Branch branch, 
             MergeReport mergeReport, 
             string taskNumber, 
-            int csetId, 
+            int csetId,
             string labelName,
-            TrunkBotConfiguration botConfig)
+            TrunkBotConfiguration botConfig,
+            Dictionary<string, string> userDefBranchAttrs,
+            CancellationToken cancellationToken)
         {
+            if (ci == null)
+                return Result.Ok;
+
             string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
             string scmSpecToSwitchTo = string.Format("cs:{0}@{1}", csetId, repSpec);
 
             string comment = string.Format(
                 "Running plan after merging branch {0}", branch.FullName);
 
-            BuildProperties properties = CreateBuildProperties(
-                restApi, 
+            BuildProperties properties = await CreateBuildProperties(
+                repoApi, 
                 taskNumber, 
                 branch.FullName, 
                 labelName,
-                BuildProperties.StageValues.POST_CHECKIN, 
-                botConfig);
+                BuildProperties.StageValues.POST_CHECKIN,
+                userDefBranchAttrs,
+                botConfig,
+                CancellationToken.None); // we cannot cancel here
 
             int iniTime = Environment.TickCount;
 
-            TrunkMergebotApi.CI.PlanResult buildResult = TrunkMergebotApi.CI.Build(
-                restApi, botConfig.CI.Plug, botConfig.CI.PlanAfterCheckin,
-                scmSpecToSwitchTo, comment, properties);
+            TrunkMergebot.BuildInProgress buildInProgress =
+                TrunkMergebot.BuildInProgress.FromCset(
+                    branch.Repository,
+                    branch.FullName,
+                    csetId,
+                    BuildType.AfterCheckinBuild,
+                    iniTime);
 
+            BuildPlan.PlanResult buildResult = await BuildPlan.Build(
+                ci,
+                storeBuildInProgress,
+                buildInProgress,
+                botConfig.CI.Plug,
+                botConfig.CI.PlanAfterCheckin,
+                scmSpecToSwitchTo,
+                comment,
+                properties,
+                cancellationToken);
+
+            if (buildResult == BuildPlan.PlanResult.Cancelled)
+                return Result.Cancelled;
+
+            return await PostAfterCheckinPlanActions(
+                notifier, userProfile, branch, mergeReport, buildResult, iniTime, botConfig)
+                ? Result.Ok
+                : Result.Failed;
+        }
+
+        static async Task<Result> TryResumeAfterCheckinPlan(
+            INotifierPlugService notifier,
+            IContinuousIntegrationPlugService ci,
+            IGetUserProfile userProfile,
+            TrunkMergebot.IStoreBuildInProgress storeBuildInProgress,
+            Branch branch,
+            TrunkBotConfiguration botConfig,
+            MergeReport mergeReport,
+            string taskNumber,
+            int csetId,
+            string execId,
+            int iniBuildTime,
+            CancellationToken cancellationToken)
+        {
+            if (botConfig.CI == null)
+            {
+                mLog.InfoFormat(NO_CI_MESSAGE_FORMAT, taskNumber);
+                return Result.Ok;
+            }
+
+            string repSpec = string.Format("{0}@{1}", branch.Repository, botConfig.Server);
+            string scmSpecToSwitchTo = string.Format("cs:{0}@{1}", csetId, repSpec);
+
+            string comment = string.Format(
+                "Running plan after merging branch {0}", branch.FullName);
+
+            BuildPlan.PlanResult buildResult = await BuildPlan.ResumeBuild(
+                ci,
+                storeBuildInProgress,
+                botConfig.CI.Plug,
+                botConfig.CI.PlanBranch,
+                execId,
+                scmSpecToSwitchTo,
+                comment,
+                cancellationToken);
+
+            if (buildResult == BuildPlan.PlanResult.Cancelled)
+                return Result.Cancelled;
+
+            bool res = await PostAfterCheckinPlanActions(
+                notifier,
+                userProfile,
+                branch,
+                mergeReport,
+                buildResult,
+                iniBuildTime,
+                botConfig);
+
+            return res ? Result.Ok : Result.Failed;
+        }
+
+        static async Task<bool> PostAfterCheckinPlanActions(
+            INotifierPlugService notifier,
+            IGetUserProfile userProfile,
+            Branch branch,
+            MergeReport mergeReport,
+            BuildPlan.PlanResult buildResult,
+            int iniBuildTime,
+            TrunkBotConfiguration botConfig)
+        {
             BuildMergeReport.AddBuildTimeProperty(mergeReport,
-                Environment.TickCount - iniTime);
+                Environment.TickCount - iniBuildTime);
 
-            string message = string.Empty;
+            string message;
 
             //TODO:shall we set any attr in trunk branch?
             if (buildResult.Succeeded)
@@ -368,11 +979,13 @@ namespace TrunkBot
                     "Plan execution after merging branch {0} was successful.",
                     branch.FullName);
 
-                Notifier.NotifyTaskStatus(
-                    restApi, 
+                await Notifier.NotifyTaskStatus(
+                    notifier, 
+                    userProfile,
                     branch.Owner,
                     message, 
                     botConfig.Notifications);
+
                 return true;
             }
 
@@ -380,20 +993,17 @@ namespace TrunkBot
                 mergeReport, botConfig.CI.PlanAfterCheckin, buildResult.Explanation);
 
             message = string.Format(
-                "Plan execution failed after merging branch {0}.\nReason: {1}",
+                "Plan execution failed after merging branch {0}.\nExplanation: {1}",
                 branch.FullName,
                 buildResult.Explanation);
 
-            Notifier.NotifyTaskStatus(
-                restApi, branch.Owner, message, botConfig.Notifications);
+            await Notifier.NotifyTaskStatus(
+                notifier, userProfile, branch.Owner, message, botConfig.Notifications);
 
             return false;
         }
 
-
-        static string GetTaskNumber(
-            string branch,
-            string branchPrefix)
+        static string GetTaskNumber(string branch, string branchPrefix)
         {
             string branchName = BranchSpec.GetName(branch);
 
@@ -407,27 +1017,27 @@ namespace TrunkBot
             return null;
         }
 
-        static string GetComment(
-            string branch,
-            string taskTittle,
-            string botName)
+        static string GetComment(string branch, string taskTitle, string botName)
         {
             string comment = string.Format("{0}: merged {1}", botName, branch);
 
-            if (taskTittle != null)
-                comment += " : " + taskTittle;
+            if (!string.IsNullOrEmpty(taskTitle))
+                comment += " : " + taskTitle;
 
             return comment;
         }
 
-        static bool IsTaskReady(
-            RestApi restApi,
+        static async Task<bool> IsTaskReady(
+            IIssueTrackerPlugService issueTracker,
             string taskNumber,
             TrunkBotConfiguration.IssueTracker issuesConfig,
             bool bIsApprovedCodeReviewFilterEnabled,
             string branchRepository,
-            string branchId,
-            string codeReviewsStorageFile)
+            int branchId,
+            string branchFullName,
+            string botName,
+            ReviewsStorage reviewsStorage,
+            CancellationToken cancellationToken)
         {
             if (taskNumber == null)
                 return false;
@@ -436,8 +1046,8 @@ namespace TrunkBot
                 return true;
 
             if (bIsApprovedCodeReviewFilterEnabled && 
-                !AreAllCodeReviewsApprovedAtLeastOne(
-                    branchRepository, branchId, codeReviewsStorageFile))
+                !AtLeastOneCodeReviewAndAllAreReviewed(
+                    branchRepository, branchId, branchFullName, botName, reviewsStorage))
             {
                 return false;
             }
@@ -445,72 +1055,141 @@ namespace TrunkBot
             if (issuesConfig == null)
                 return true;
 
-            mLog.InfoFormat("Checking if issue tracker [{0}] is available...", issuesConfig.Plug);
-            if (!TrunkMergebotApi.Issues.Connected(restApi, issuesConfig.Plug))
+            if (cancellationToken.IsCancellationRequested)
+                return false;
+
+            mLog.InfoFormat(
+                "[{0}] Checking if issue tracker [{1}] is available...",
+                botName, issuesConfig.Plug);
+            
+            if (!issueTracker.IsIssueTrackerConnected(issuesConfig.Plug))
             {
-                mLog.WarnFormat("Issue tracker [{0}] is NOT available...", issuesConfig.Plug);
+                mLog.WarnFormat(
+                    "[{0}] Issue tracker [{1}] is NOT available...",
+                    botName, issuesConfig.Plug);
+
                 return false;
             }
 
-            mLog.InfoFormat("Checking if task {0} is ready in the issue tracker [{1}].",
-                taskNumber, issuesConfig.Plug);
+            if (cancellationToken.IsCancellationRequested)
+                return false;
 
-            string status = TrunkMergebotApi.Issues.GetIssueField(
-                restApi, issuesConfig.Plug, issuesConfig.ProjectKey,
-                taskNumber, issuesConfig.StatusField.Name);
+            mLog.InfoFormat(
+                "[{0}] Checking if task {1} is ready in the issue tracker [{2}].",
+                botName, taskNumber, issuesConfig.Plug);
 
-            mLog.DebugFormat("Issue tracker status for task [{0}]: expected [{1}], was [{2}]",
-                taskNumber, issuesConfig.StatusField.ResolvedValue, status);
+            try
+            {
+                string status = await issueTracker.GetIssueFieldValue(
+                    issuesConfig.Plug,
+                    issuesConfig.ProjectKey,
+                    taskNumber,
+                    issuesConfig.StatusField.Name);
 
-            return status == issuesConfig.StatusField.ResolvedValue;
+                mLog.DebugFormat(
+                    "[{0}] Issue tracker status for task [{1}]: expected [{2}], was [{3}]",
+                    botName, taskNumber, issuesConfig.StatusField.ResolvedValue, status);
+
+                return status == issuesConfig.StatusField.ResolvedValue;
+            }
+            catch (Exception ex)
+            {
+                mLog.ErrorFormat(
+                    "[{0}] Cannot retrieve task {1} status from issue tracker: {2}",
+                    botName, taskNumber, ex.Message);
+
+                mLog.DebugFormat(
+                    "StackTrace:{0}{1}", Environment.NewLine, ex.StackTrace);
+
+                return false;
+            }
         }
 
-        static bool AreAllCodeReviewsApprovedAtLeastOne(
-            string branchRepository, string branchId, string codeReviewsStorageFile)
+        static bool AtLeastOneCodeReviewAndAllAreReviewed(
+            string branchRepository, 
+            int branchId, 
+            string branchFullName, 
+            string botName,
+            ReviewsStorage reviewsStorage)
         {
             List<Review> branchReviews =
-                ReviewsStorage.GetBranchReviews(branchRepository, branchId, codeReviewsStorageFile);
+                reviewsStorage.GetBranchReviews(branchRepository, branchId);
 
             if (branchReviews == null || branchReviews.Count == 0)
-                return false;
-
-            foreach(Review branchReview in branchReviews)
             {
-                if (!branchReview.IsApproved())
+                mLog.InfoFormat(
+                    "[{0}] Branch not ready. No code reviews found for branch {1}",
+                    botName, branchFullName);
+
+                return false;
+            }
+
+            foreach (Review branchReview in branchReviews)
+            {
+                if (!branchReview.IsReviewed())
+                {
+                    mLog.InfoFormat(
+                        "[{0}] Branch not ready. " +
+                        "Code review found for branch {1}, but it's not reviewed yet.",
+                        botName, branchFullName);
+
                     return false;
+                }
             }
 
             return true;
         }
 
-        static bool GetIssueInfo(
-            RestApi restApi,
+        static async Task<IssueInfo> GetIssueInfo(
+            IIssueTrackerPlugService issueTracker,
             string taskNumber,
-            TrunkBotConfiguration.IssueTracker issuesConfig,
-            out string taskTittle,
-            out string taskUrl)
+            string botName,
+            TrunkBotConfiguration.IssueTracker issuesConfig)
         {
-            taskTittle = null;
-            taskUrl = null;
+            if (issueTracker == null || issuesConfig == null)
+                return null;
 
-            if (issuesConfig == null)
-                return false;
+            mLog.InfoFormat("[{0}] Obtaining task {1} title...", botName, taskNumber);
 
-            mLog.InfoFormat("Obtaining task {0} title...", taskNumber);
-            taskTittle = TrunkMergebotApi.Issues.GetIssueField(
-                restApi, issuesConfig.Plug, issuesConfig.ProjectKey,
+            string taskTittle = await issueTracker.GetIssueFieldValue(
+                issuesConfig.Plug, issuesConfig.ProjectKey,
                 taskNumber, issuesConfig.TitleField);
 
-            mLog.InfoFormat("Obtaining task {0} URL...", taskNumber);
-            taskUrl = TrunkMergebotApi.Issues.GetIssueUrl(
-                restApi, issuesConfig.Plug, issuesConfig.ProjectKey,
+            mLog.InfoFormat("[{0}] Obtaining task {1} URL...", botName, taskNumber);
+
+            string taskUrl = await issueTracker.GetIssueUrl(
+                issuesConfig.Plug, issuesConfig.ProjectKey,
                 taskNumber);
 
-            return true;
+            return new IssueInfo(taskTittle, taskUrl);
+        }
+
+        static async Task<Dictionary<string, string>> GetUserDefBranchAttributesValues(
+            IRepositoryOperationsForMergebot repoApi, 
+            string repoName,
+            string branchName,
+            string[] branchAttributeNamesToForward)
+        {
+            if (branchAttributeNamesToForward == null)
+                return new Dictionary<string, string>(0);
+
+            Dictionary<string, string> userDefBranchAttrs = 
+                new Dictionary<string, string>(branchAttributeNamesToForward.Length);
+
+            foreach (string attributeName in branchAttributeNamesToForward)
+            {
+                userDefBranchAttrs[attributeName] =
+                    await repoApi.GetBranchAttributeValue(
+                        repoName, 
+                        branchName, 
+                        attributeName);
+            }
+
+            return userDefBranchAttrs;
         }
 
         static void ReportMerge(
-            RestApi restApi,
+            IReportMerge reportMerge,
             string repository,
             string branchName,
             string botName,
@@ -521,13 +1200,13 @@ namespace TrunkBot
 
             try
             {
-                TrunkMergebotApi.MergeReports.ReportMerge(restApi, botName, mergeReport);
+                reportMerge.Report(botName, mergeReport);
             }
             catch (Exception ex)
             {
                 mLog.ErrorFormat(
-                    "Unable to report merge for branch '{0}' on repository '{1}': {2}",
-                    branchName, repository, ex.Message);
+                    "[{0}] Unable to report merge for branch '{1}' on repository '{2}': {3}",
+                    botName, branchName, repository, ex.Message);
 
                 mLog.DebugFormat(
                     "StackTrace:{0}{1}",
@@ -535,9 +1214,32 @@ namespace TrunkBot
             }
         }
 
+        static void DeleteShelves(
+            IRepositoryOperationsForMergebot repoApi,
+            string branchRepository,
+            string botName,
+            int shelveId,
+            List<MergeToXlinkChangeset> xlinkShelves)
+        {
+            SafeDeleteShelve(repoApi, branchRepository, botName, shelveId);
+
+            if (xlinkShelves == null)
+                return;
+
+            foreach (MergeToXlinkChangeset changeset in xlinkShelves)
+            {
+                SafeDeleteShelve(
+                    repoApi,
+                    changeset.RepositoryName,
+                    botName,
+                    changeset.ChangesetId);
+            }
+        }
+
         static void SafeDeleteShelve(
-            RestApi restApi,
+            IRepositoryOperationsForMergebot repoApi,
             string repository,
+            string botName,
             int shelveId)
         {
             if (shelveId == -1)
@@ -545,13 +1247,13 @@ namespace TrunkBot
 
             try
             {
-                TrunkMergebotApi.DeleteShelve(restApi, repository, shelveId);
+                repoApi.DeleteShelve(repository, shelveId);
             }
             catch (Exception ex)
             {
                 mLog.ErrorFormat(
-                    "Unable to delete shelve {0} on repository '{1}': {2}",
-                    shelveId, repository, ex.Message);
+                    "[{0}] Unable to delete shelve {1} on repository '{2}': {3}",
+                    botName, shelveId, repository, ex.Message);
 
                 mLog.DebugFormat(
                     "StackTrace:{0}{1}",
@@ -559,23 +1261,25 @@ namespace TrunkBot
             }
         }
 
-        static BuildProperties CreateBuildProperties(
-            RestApi restApi,
+        static async Task<BuildProperties> CreateBuildProperties(
+            IRepositoryOperationsForMergebot repoApi,
             string taskNumber,
             string branchName,
             string labelName,
             string buildStagePreCiOrPostCi,
-            TrunkBotConfiguration botConfig)
+            Dictionary<string, string> userDefBranchAttrs,
+            TrunkBotConfiguration botConfig,
+            CancellationToken cancellationToken)
         {
-            int branchHeadChangesetId = TrunkMergebotApi.GetBranchHead(
-                restApi, botConfig.Repository, branchName);
-            ChangesetModel branchHeadChangeset = TrunkMergebotApi.GetChangeset(
-                restApi, botConfig.Repository, branchHeadChangesetId);
+            int branchHeadChangesetId =
+                await repoApi.GetBranchHead(botConfig.Repository, branchName, cancellationToken);
+            ChangesetModel branchHeadChangeset = await repoApi.GetChangeset(
+                botConfig.Repository, branchHeadChangesetId, cancellationToken);
 
-            int trunkHeadChangesetId = TrunkMergebotApi.GetBranchHead(
-                restApi, botConfig.Repository, botConfig.TrunkBranch);
-            ChangesetModel trunkHeadChangeset = TrunkMergebotApi.GetChangeset(
-                restApi, botConfig.Repository, trunkHeadChangesetId);
+            int trunkHeadChangesetId = await repoApi.GetBranchHead(
+                botConfig.Repository, botConfig.TrunkBranch, cancellationToken);
+            ChangesetModel trunkHeadChangeset = await repoApi.GetChangeset(
+                botConfig.Repository, trunkHeadChangesetId, cancellationToken);
 
             return new BuildProperties
             {
@@ -588,10 +1292,26 @@ namespace TrunkBot
                 TrunkHeadGuid = trunkHeadChangeset.Guid.ToString(),
                 RepSpec = string.Format("{0}@{1}", botConfig.Repository, botConfig.Server),
                 LabelName = labelName,
-                Stage = buildStagePreCiOrPostCi
+                Stage = buildStagePreCiOrPostCi,
+                UserDefinedBranchAttributes = userDefBranchAttrs
             };
         }
 
-        static readonly ILog mLog = LogManager.GetLogger("trunkbot");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot");
+
+        const string NO_CI_MESSAGE_FORMAT = "No Continuous Integration Plug was set " +
+            "for this mergebot. Therefore, no build actions for task {0} will be performed.";
+
+        class IssueInfo
+        {
+            internal IssueInfo(string title, string url)
+            {
+                Title = title;
+                Url = url;
+            }
+
+            internal readonly string Title;
+            internal readonly string Url;
+        }
     }
 }

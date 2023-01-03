@@ -25,16 +25,16 @@ namespace TrunkBot.Configuration
             errorMessage = string.Empty;
 
             if (string.IsNullOrEmpty(botConfig.Server))
-                errorMessage += BuildFieldError("server");
+                errorMessage += BuildMissingFieldError("server");
 
             if (string.IsNullOrEmpty(botConfig.Repository))
-                errorMessage += BuildFieldError("repository");
+                errorMessage += BuildMissingFieldError("repository");
 
             if (string.IsNullOrEmpty(botConfig.TrunkBranch))
-                errorMessage += BuildFieldError("trunk branch");
+                errorMessage += BuildMissingFieldError("trunk branch");
 
             if (string.IsNullOrEmpty(botConfig.UserApiKey))
-                errorMessage += BuildFieldError("user api key");
+                errorMessage += BuildMissingFieldError("user api key");
 
             string propertyErrorMessage = null;
             if (!CheckValidPlasticFields(botConfig.Plastic, out propertyErrorMessage))
@@ -65,7 +65,7 @@ namespace TrunkBot.Configuration
 
             if (botConfig == null)
             {
-                errorMessage = BuildFieldError(fieldNameBeingChecked);
+                errorMessage = BuildMissingFieldError(fieldNameBeingChecked);
                 return false;
             }
 
@@ -79,7 +79,7 @@ namespace TrunkBot.Configuration
             if (!CheckValidStatusPropertyFieldsForPlasticAttr(
                     botConfig.IsApprovedCodeReviewFilterEnabled,
                     botConfig.StatusAttribute,
-                    "of the status attribute for Plastic config",
+                    "of the 'Branch lifecycle configuration with a status attribute'",
                     out propertyErrorMessage))
                 errorMessage += propertyErrorMessage;
 
@@ -116,10 +116,10 @@ namespace TrunkBot.Configuration
                 return true;
 
             if (string.IsNullOrEmpty(botConfig.Plug))
-                errorMessage += BuildFieldError("plug name for Issue Tracker config");
+                errorMessage += BuildMissingFieldError("plug name for Issue Tracker config");
 
             if (string.IsNullOrEmpty(botConfig.TitleField))
-                errorMessage += BuildFieldError("title field for Issue Tracker config");
+                errorMessage += BuildMissingFieldError("title field for Issue Tracker config");
 
             string propertyErrorMessage = null;
             if (!CheckValidStatusPropertyFieldsForIssueTracker(
@@ -141,10 +141,10 @@ namespace TrunkBot.Configuration
                 return true;
 
             if (string.IsNullOrEmpty(botConfig.Plug))
-                errorMessage += BuildFieldError("plug name for CI config");
+                errorMessage += BuildMissingFieldError("plug name for CI config");
 
             if (string.IsNullOrEmpty(botConfig.PlanBranch))
-                errorMessage += BuildFieldError("plan branch for CI config");
+                errorMessage += BuildMissingFieldError("plan branch for CI config");
 
             //botConfig.PlanAfterCheckin could be empty, so we don't check its field.
 
@@ -161,7 +161,7 @@ namespace TrunkBot.Configuration
                 return true;
 
             if (string.IsNullOrEmpty(botConfig.Plug))
-                errorMessage += BuildFieldError("plug name for Notifications config");
+                errorMessage += BuildMissingFieldError("plug name for Notifications config");
 
             if (IsDestinationInfoEmpty(botConfig))
             {
@@ -198,19 +198,10 @@ namespace TrunkBot.Configuration
             string groupNameMessage,
             out string errorMessage)
         {
-            errorMessage = string.Empty;
+            errorMessage = CheckMissingStatusFields(
+                bIsApprovedCodeReviewFilterEnabled, botConfig, groupNameMessage);
 
-            if (string.IsNullOrEmpty(botConfig.Name))
-                errorMessage += BuildFieldError("name " + groupNameMessage);
-
-            if (string.IsNullOrEmpty(botConfig.ResolvedValue) && !bIsApprovedCodeReviewFilterEnabled)
-                errorMessage += BuildFieldError("resolved value " + groupNameMessage);
-
-            if (string.IsNullOrEmpty(botConfig.FailedValue) && !bIsApprovedCodeReviewFilterEnabled)
-                errorMessage += BuildFieldError("failed value " + groupNameMessage);
-
-            if (string.IsNullOrEmpty(botConfig.MergedValue))
-                errorMessage += BuildFieldError("merged value " + groupNameMessage);
+            errorMessage += CheckInvalidCharactersInStatusFields(botConfig, groupNameMessage);
 
             if (!string.IsNullOrEmpty(botConfig.ResolvedValue) &&
                 !string.IsNullOrEmpty(botConfig.MergedValue) &&
@@ -272,9 +263,81 @@ namespace TrunkBot.Configuration
                 (botConfig.FixedRecipients == null || botConfig.FixedRecipients.Length == 0);
         }
 
-        static string BuildFieldError(string fieldName)
+        static string CheckMissingStatusFields(
+            bool bIsApprovedCodeReviewFilterEnabled,
+            TrunkBotConfiguration.StatusProperty botConfig,
+            string groupNameMessage)
+        {
+            string errorMessage = string.Empty;
+
+            if (string.IsNullOrEmpty(botConfig.Name))
+                errorMessage += BuildMissingFieldError("name " + groupNameMessage);
+
+            if (string.IsNullOrEmpty(botConfig.ResolvedValue) && !bIsApprovedCodeReviewFilterEnabled)
+                errorMessage += BuildMissingFieldError("resolved value " + groupNameMessage);
+
+            if (string.IsNullOrEmpty(botConfig.FailedValue) && !bIsApprovedCodeReviewFilterEnabled)
+                errorMessage += BuildMissingFieldError("failed value " + groupNameMessage);
+
+            if (string.IsNullOrEmpty(botConfig.MergedValue))
+                errorMessage += BuildMissingFieldError("merged value " + groupNameMessage);
+
+            return errorMessage;
+        }
+
+        static string CheckInvalidCharactersInStatusFields(
+            TrunkBotConfiguration.StatusProperty botConfig,
+            string groupNameMessage)
+        {
+            string errorMessage = string.Empty;
+
+            if (ContainsInvalidCharacters(botConfig.Name))
+            {
+                errorMessage += BuildInvalidCharactersInFieldError(
+                    "status attribute name " + groupNameMessage);
+            }
+
+            if (ContainsInvalidCharacters(botConfig.ResolvedValue))
+            {
+                errorMessage += BuildInvalidCharactersInFieldError(
+                    "resolved value " + groupNameMessage);
+            }
+
+            if (ContainsInvalidCharacters(botConfig.TestingValue))
+            {
+                errorMessage += BuildInvalidCharactersInFieldError(
+                    "testing value " + groupNameMessage);
+            }
+
+            if (ContainsInvalidCharacters(botConfig.FailedValue))
+            {
+                errorMessage += BuildInvalidCharactersInFieldError(
+                    "failed value " + groupNameMessage);
+            }
+
+            if (ContainsInvalidCharacters(botConfig.MergedValue))
+            {
+                errorMessage += BuildInvalidCharactersInFieldError(
+                    "merged value " + groupNameMessage);
+            }
+            return errorMessage;
+        }
+
+        static string BuildMissingFieldError(string fieldName)
         {
             return string.Format("* The {0} must be defined.\n", fieldName);
+        }
+
+        static bool ContainsInvalidCharacters(string value)
+        {
+            return value.Contains("\"") || value.Contains("'");
+        }
+
+        static string BuildInvalidCharactersInFieldError(string fieldName)
+        {
+            return string.Format(
+                "* At least one unsupported character [\", '] found in the {0}.\n",
+                fieldName);
         }
 
         static string BuildNoFiltersEnabledErrorMessage(string fieldName)

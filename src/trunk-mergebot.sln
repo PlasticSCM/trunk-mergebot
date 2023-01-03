@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.27428.2027
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "trunkbot", "trunkbot.csproj", "{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "trunkbot", "trunkbot.csproj", "{3A6F932B-70E8-4829-BAF1-35D7967D722D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6E6B15A9-FA8B-48C5-A671-F362DC9C140E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A6F932B-70E8-4829-BAF1-35D7967D722D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A6F932B-70E8-4829-BAF1-35D7967D722D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3A6F932B-70E8-4829-BAF1-35D7967D722D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A6F932B-70E8-4829-BAF1-35D7967D722D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {A71BD54C-BE2F-4419-ADB9-0877A2948C89}
+		SolutionGuid = {26323F4B-DD1F-4870-9B1F-55E98A8B7E73}
 	EndGlobalSection
 EndGlobal

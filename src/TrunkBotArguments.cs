@@ -42,6 +42,11 @@
             get { return mConfigFilePath; }
         }
 
+        internal string BasePath
+        {
+            get { return mBasePath; }
+        }
+
         bool LoadArguments(string[] args)
         {
             if (args == null || args.Length == 0)
@@ -96,6 +101,12 @@
                     bValidArgs = ReadArgumentValue(args, ++i, out mConfigFilePath);
                     continue;
                 }
+
+                if (args[i] == BASEPATH_ARG)
+                {
+                    bValidArgs = ReadArgumentValue(args, ++i, out mBasePath);
+                    continue;
+                }
             }
 
             return bValidArgs;
@@ -133,6 +144,7 @@
         string mBotName;
         string mApiKey;
         string mConfigFilePath;
+        string mBasePath;
 
         static string[] VALID_HELP_ARGS = new string[] {
             "--help", "-h", "--?", "-?" };
@@ -142,12 +154,14 @@
             API_URL_ARG,
             BOT_NAME_ARG,
             API_KEY_ARG,
-            CONFIG_FILE_ARG };
+            CONFIG_FILE_ARG,
+            BASEPATH_ARG};
 
         const string WEB_SOCKET_URL_ARG = "--websocket";
         const string API_URL_ARG = "--restapi";
         const string BOT_NAME_ARG = "--name";
         const string API_KEY_ARG = "--apikey";
         const string CONFIG_FILE_ARG = "--config";
+        const string BASEPATH_ARG = "--basepath";
     }
 }

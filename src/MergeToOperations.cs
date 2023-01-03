@@ -1,42 +1,90 @@
-﻿using TrunkBot.Api;
-using TrunkBot.Api.Requests;
-using TrunkBot.Api.Responses;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+
+using Codice.CM.Server.Devops;
+using Codice.LogWrapper;
 using TrunkBot.Configuration;
 
 namespace TrunkBot
 {
     internal static class MergeToOperations
     {
-        internal static bool TryMergeToShelve(
-            RestApi restApi,
+        internal class Result
+        {
+            internal enum ResultStatus
+            {
+                Failed,
+                Succeed,
+                QueueAgain,
+            }
+
+            internal readonly ResultStatus Status;
+            internal readonly int CreatedId;
+            internal readonly List<MergeToXlinkChangeset> CreatedXlinkChangesets;
+
+            internal static Result BuildSucceeded(
+                int createdId, List<MergeToXlinkChangeset> createdXlinkChangesets)
+            {
+                return new Result(ResultStatus.Succeed, createdId, createdXlinkChangesets);
+            }
+
+            internal static Result BuildFailed()
+            {
+                return new Result(ResultStatus.Failed, -1, null);
+            }
+
+            Result(
+                ResultStatus status,
+                int createdId,
+                List<MergeToXlinkChangeset> createdXlinkChangesets)
+            {
+                Status = status;
+                CreatedId = createdId;
+                CreatedXlinkChangesets = createdXlinkChangesets;
+            }
+
+            internal static Result BuildQueueAgain()
+            {
+                return new Result(ResultStatus.QueueAgain, -1, null);
+            }
+        }
+
+        internal static async Task<Result> TryMergeToShelve(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             Branch branch,
             string destinationBranch,
             MergeReport mergeReport,
             string comment,
             string taskNumber,
             TrunkBotConfiguration botConfig,
-            string codeReviewsStorageFile,
-            out int shelveId)
+            ReviewsStorage reviewsStorage)
         {
-            shelveId = -1;
+            MergeToResponse result = await repoApi.MergeBranchTo(
+                branch.Repository, branch.FullName, destinationBranch,
+                comment, MergeToOptions.CreateShelve);
 
-            MergeToResponse result = TrunkMergebotApi.MergeBranchTo(
-                restApi, branch.Repository, branch.FullName, destinationBranch,
-                comment, TrunkMergebotApi.MergeToOptions.CreateShelve);
+            string message;
 
             if (result.Status == MergeToResultStatus.MergeNotNeeded)
             {
-                ChangeTaskStatus.SetTaskAsMerged(
-                    restApi,
+                message = string.Format("Branch {0} was already merged to {1} (MergeNotNeeded).",
+                    branch.FullName, botConfig.TrunkBranch);
+                mLog.Debug(message);
+
+                await ChangeTaskStatus.SetTaskAsMerged(
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
                     branch,
                     taskNumber,
-                    string.Format(
-                        "Branch {0} was already merged to {1} (MergeNotNeeded).",
-                        branch.FullName,
-                        botConfig.TrunkBranch),
+                    message,
                     botConfig,
-                    codeReviewsStorageFile);
-                return false;
+                    reviewsStorage);
+                return Result.BuildFailed();
             }
 
             if (result.Status == MergeToResultStatus.AncestorNotFound ||
@@ -44,27 +92,33 @@ namespace TrunkBot
                 result.Status == MergeToResultStatus.Error ||
                 result.ChangesetNumber == 0)
             {
+                message = string.Format("Can't merge branch {0}. Reason: {1}",
+                    branch.FullName, result.Message);
+                mLog.Debug(message);
+
                 BuildMergeReport.AddFailedMergeProperty(mergeReport, result.Status, result.Message);
-                ChangeTaskStatus.SetTaskAsFailed(
-                    restApi,
+                await ChangeTaskStatus.SetTaskAsFailed(
+                    issueTracker,
+                    notifier,
+                    repoApi,
+                    userProfile,
                     branch,
                     taskNumber,
-                    string.Format(
-                        "Can't merge branch {0}. Reason: {1}",
-                        branch.FullName, result.Message),
+                    message,
                     botConfig,
-                    codeReviewsStorageFile);
-                return false;
+                    reviewsStorage);
+                return Result.BuildFailed();;
             }
 
-            shelveId = result.ChangesetNumber;
             BuildMergeReport.AddSucceededMergeProperty(mergeReport, result.Status);
-
-            return true;
+            return Result.BuildSucceeded(result.ChangesetNumber, result.XlinkChangesets);
         }
 
-        internal static bool TryApplyShelve(
-            RestApi restApi,
+        internal static async Task<Result> TryApplyShelve(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             Branch branch,
             string destinationBranch,
             MergeReport mergeReport,
@@ -72,38 +126,42 @@ namespace TrunkBot
             string taskNumber,
             int shelveId,
             TrunkBotConfiguration botConfig,
-            string codeReviewsStorageFile,
-            out int csetId)
+            ReviewsStorage reviewsStorage)
         {
-            MergeToResponse mergeResult = TrunkMergebotApi.MergeShelveTo(
-                restApi, branch.Repository, shelveId, destinationBranch,
-                comment, TrunkMergebotApi.MergeToOptions.EnsureNoDstChanges);
+            MergeToResponse mergeResult = await repoApi.MergeShelveTo(
+                branch.Repository, shelveId, destinationBranch,
+                comment, MergeToOptions.EnsureNoDstChanges);
 
-            csetId = mergeResult.ChangesetNumber;
+            int csetId = mergeResult.ChangesetNumber;
             BuildMergeReport.UpdateMergeProperty(mergeReport, mergeResult.Status, csetId);
 
             if (mergeResult.Status == MergeToResultStatus.OK)
-                return true;
+                return Result.BuildSucceeded(csetId, mergeResult.XlinkChangesets);
 
-            if (mergeResult.Status == MergeToResultStatus.DestinationChanges)
+            string message = string.Format("Can't merge branch {0}. Reason: {1}",
+                branch.FullName, mergeResult.Message);
+            mLog.Debug(message);
+
+            if (mergeResult.Status == MergeToResultStatus.DestinationChanges
+                && botConfig.QueueAgainOnFail)
             {
-                // it should checkin the shelve only on the exact parent shelve cset.
-                // if there are new changes in the trunk branch enqueue againg the task
-                return false;
+                return Result.BuildQueueAgain();
             }
 
-            ChangeTaskStatus.SetTaskAsFailed(
-                restApi,
+            await ChangeTaskStatus.SetTaskAsFailed(
+                issueTracker,
+                notifier,
+                repoApi,
+                userProfile,
                 branch,
                 taskNumber,
-                string.Format(
-                    "Can't merge branch {0}. Reason: {1}",
-                    branch.FullName,
-                    mergeResult.Message),
+                message,
                 botConfig,
-                codeReviewsStorageFile);
+                reviewsStorage);
 
-            return false;
+            return Result.BuildFailed();
         }
+
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-MergeToOperations");
     }
 }

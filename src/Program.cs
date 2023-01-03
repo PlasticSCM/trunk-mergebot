@@ -2,12 +2,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 
-using log4net;
-using log4net.Config;
-
+using Codice.CM.Server.Devops;
+using Codice.LogWrapper;
+using TrunkBot.Api;
 using TrunkBot.Configuration;
 using TrunkBot.WebSockets;
 
@@ -21,11 +20,12 @@ namespace TrunkBot
             try
             {
                 TrunkBotArguments botArgs = new TrunkBotArguments(args);
-
                 bool bValidArgs = botArgs.Parse();
+
+                string basePath = GetBasePath(botArgs.BasePath);
                 botName = botArgs.BotName;
 
-                ConfigureLogging(botName);
+                ConfigureLogging(basePath, botName);
 
                 mLog.InfoFormat("TrunkBot [{0}] started. Version [{1}]",
                     botName,
@@ -66,7 +66,7 @@ namespace TrunkBot
                 }
 
                 TrunkBotConfiguration botConfig = TrunkBotConfiguration.
-                    BuidFromConfigFile(botArgs.ConfigFilePath);
+                    BuildFromConfigFile(botArgs.ConfigFilePath);
 
                 errorMessage = null;
                 if (!TrunkBotConfigurationChecker.CheckConfiguration(
@@ -84,12 +84,10 @@ namespace TrunkBot
 
                 string escapedBotName = GetEscapedBotName(botName);
 
-                LaunchTrunkMergebot(
+                Task trunkMergebot = LaunchTrunkMergebot(
                     botArgs.WebSocketUrl,
                     botArgs.RestApiUrl,
                     botConfig,
-                    ToolConfig.GetBranchesFile(escapedBotName),
-                    ToolConfig.GetCodeReviewsFile(escapedBotName),
                     botName,
                     botArgs.ApiKey);
 
@@ -97,6 +95,7 @@ namespace TrunkBot
                     "TrunkBot [{0}] is going to finish: orderly shutdown.",
                     botName);
 
+                trunkMergebot.Wait();
                 return 0;
             }
             catch (Exception e)
@@ -110,69 +109,56 @@ namespace TrunkBot
             }
         }
 
-        static void LaunchTrunkMergebot(
+        static string GetBasePath(string basePath)
+        {
+            if (string.IsNullOrEmpty(basePath))
+            {
+                return Path.GetDirectoryName(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location);
+            }
+
+            return basePath;
+        }
+
+        static async Task LaunchTrunkMergebot(
             string webSocketUrl,
             string restApiUrl,
             TrunkBotConfiguration botConfig,
-            string branchesQueueFilePath,
-            string codeReviewsTrackedFilePath,
             string botName,
             string apiKey)
         {
-            if (!Directory.Exists(Path.GetDirectoryName(branchesQueueFilePath)))
-                Directory.CreateDirectory(Path.GetDirectoryName(branchesQueueFilePath));
-
+            RestApi restApi = new RestApi(restApiUrl, botConfig.UserApiKey);
             TrunkMergebot trunkBot = new TrunkMergebot(
-                restApiUrl,
+                new IssueTrackerPlugService(restApi),
+                new NotifierPlugService(restApi),
+                new ContinuousIntegrationPlugService(restApi),
+                new RepositoryOperationsForTrunkbot(restApi),
+                new GetUserProfile(restApi),
+                new ReportMerge(restApi),
+                null,
                 botConfig, 
-                branchesQueueFilePath,
-                codeReviewsTrackedFilePath,
                 botName);
 
-            try
-            {
-                trunkBot.EnsurePlasticStatusAttributeExists();
-            }
-            catch (Exception e)
-            {
-                mLog.FatalFormat(
-                    "TrunkBot [{0}] is going to finish because it wasn't able " +
-                    "to configure the required plastic status attribute [{1}] for its proper working. " +
-                    "Reason: {2}", botName, botConfig.Plastic.StatusAttribute.Name, e.Message);
+            await ((IMergebotService)trunkBot).Initialize();
 
-                mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, e.StackTrace);
-                throw;
-            }
-
-            try
-            { 
-                trunkBot.LoadBranchesToProcess();
-            }
-            catch (Exception e)
-            {
-                mLog.FatalFormat(
-                    "TrunkBot [{0}] is going to finish because it couldn't load " +
-                    "the branches to process on startup. Reason: {1}", botName, e.Message);
-                mLog.DebugFormat("Stack trace:{0}{1}", Environment.NewLine, e.StackTrace);
-                throw;
-            }
-
-            ThreadPool.QueueUserWorkItem(trunkBot.ProcessBranches);
+            Task botTask = ((IMergebotService)trunkBot).Start();
 
             string[] eventsToSubscribe = GetEventNamesToSuscribe(
                 botConfig.Plastic.IsApprovedCodeReviewFilterEnabled,
                 botConfig.Plastic.IsBranchAttrFilterEnabled);
 
+            WebSocketTrigger webSocketTrigger = new WebSocketTrigger(trunkBot);
+            
             WebSocketClient ws = new WebSocketClient(
                 webSocketUrl,
                 botName,
                 apiKey,
                 eventsToSubscribe,
-                trunkBot.OnEventReceived);
+                webSocketTrigger.OnEventReceived);
 
             ws.ConnectWithRetries();
 
-            Task.Delay(-1).Wait();
+            await botTask;
         }
 
         static string[] GetEventNamesToSuscribe(
@@ -210,16 +196,21 @@ namespace TrunkBot
             Console.WriteLine();
         }
 
-        static void ConfigureLogging(string botName)
+        static void ConfigureLogging(string basePath, string botName)
         {
             if (string.IsNullOrEmpty(botName))
                 botName = DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
 
             try
             {
-                string log4netpath = ToolConfig.GetLogConfigFile();
-                log4net.GlobalContext.Properties["Name"] = botName;
-                XmlConfigurator.Configure(new FileInfo(log4netpath));
+                string logOutputPath = Path.GetFullPath(Path.Combine(
+                   basePath,
+                   "../../../logs",
+                   "trunkbot." + botName + ".log.txt"));
+
+                string log4netConfPath = ToolConfig.GetLogConfigFile(basePath);
+                log4net.GlobalContext.Properties["LogOutputPath"] = logOutputPath;
+                Configurator.Configure(log4netConfPath);
             }
             catch
             {
@@ -242,6 +233,6 @@ namespace TrunkBot
             return cleanName;
         }
 
-        static readonly ILog mLog = LogManager.GetLogger("trunkbot");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-Main");
     }
 }

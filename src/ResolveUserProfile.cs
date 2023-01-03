@@ -1,17 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-
-using log4net;
+using Codice.CM.Server.Devops;
+using Codice.LogWrapper;
 using Newtonsoft.Json.Linq;
-
-using TrunkBot.Api;
 
 namespace TrunkBot
 {
     internal static class ResolveUserProfile
     {
         internal static List<string> ResolveFieldForUsers(
-            RestApi restApi,
+            IGetUserProfile userProfile,
             List<string> users,
             string profileFieldQualifiedName)
         {
@@ -28,7 +26,7 @@ namespace TrunkBot
                 string solvedUser;
 
                 if (!TryResolveUserProfileValue(
-                    restApi, user, profileFieldsPath, out solvedUser))
+                    userProfile, user, profileFieldsPath, out solvedUser))
                 {
                     Add(user, result);
                     continue;
@@ -49,14 +47,14 @@ namespace TrunkBot
         }
 
         static bool TryResolveUserProfileValue(
-            RestApi restApi, 
+            IGetUserProfile userProfile, 
             string user, 
             string[] profileFieldsPath, 
             out string solvedUser)
         {
             solvedUser = null;
 
-            JObject userProfileResponse = GetUserProfile(restApi, user);
+            JObject userProfileResponse = GetUserProfile(userProfile, user);
 
             if (userProfileResponse == null)
                 return false;
@@ -67,11 +65,11 @@ namespace TrunkBot
             return !string.IsNullOrEmpty(solvedUser);
         }
 
-        static JObject GetUserProfile(RestApi restApi, string user)
+        static JObject GetUserProfile(IGetUserProfile userProfile, string user)
         {
             try
             {
-                return TrunkMergebotApi.Users.GetUserProfile(restApi, user);
+                return userProfile.GetUserProfile(user);
             }
             catch (Exception e)
             {
@@ -83,6 +81,6 @@ namespace TrunkBot
             }
         }
 
-        static readonly ILog mLog = LogManager.GetLogger("notifier");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-Notifier");
     }
 }

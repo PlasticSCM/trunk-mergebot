@@ -1,4 +1,4 @@
-﻿using log4net;
+﻿using Codice.LogWrapper;
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -52,7 +52,7 @@ namespace TrunkBot.Messages
             }
         }
 
-        static readonly ILog mLog = LogManager.GetLogger("eventparser");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-ParseEvent");
     }
 
     

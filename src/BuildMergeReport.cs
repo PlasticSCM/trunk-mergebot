@@ -1,19 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using TrunkBot.Api.Requests;
-using TrunkBot.Api.Responses;
+using Codice.CM.Server.Devops;
 
 namespace TrunkBot
 {
     internal static class BuildMergeReport
     {
-        internal static MergeReport Build(BranchModel branch)
+        internal static MergeReport Build(string repId, int branchId)
         {
             MergeReport result = new MergeReport();
             result.Timestamp = DateTime.UtcNow;
-            result.RepositoryId = branch.RepositoryId;
-            result.BranchId = branch.Id;
+            result.RepositoryId = repId;
+            result.BranchId = branchId;
             result.Properties = new List<MergeReport.Entry>();
             return result;
         }

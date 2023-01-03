@@ -1,6 +1,6 @@
 ﻿using System;
-
-using TrunkBot.Api;
+using System.Threading.Tasks;
+using Codice.CM.Server.Devops;
 
 namespace TrunkBot.Labeling
 {
@@ -20,8 +20,8 @@ namespace TrunkBot.Labeling
             }
         }
 
-        internal static Result CreateLabel(
-            RestApi restApi,
+        async internal static Task<Result> CreateLabel(
+            IRepositoryOperationsForMergebot repoApi,
             int csetId, 
             string repository, 
             string labelPattern, 
@@ -35,8 +35,8 @@ namespace TrunkBot.Labeling
             if (string.IsNullOrEmpty(plasticFindPattern))
                 return new Result(false, string.Empty, Messages.MALFORMED_PATTERN);
 
-            Label lastMatchingLabel = FindQueries.FindMostRecentLabel(
-                restApi, repository, now.AddYears(-2), plasticFindPattern);
+            Label lastMatchingLabel = await repoApi.FindMostRecentLabel(
+                repository, now.AddYears(-2), plasticFindPattern);
 
             string newLabelNameCandidate = NewLabelNameGenerator.GetNewLabelName(
                 plasticFindPattern, lastMatchingLabel);
@@ -49,8 +49,8 @@ namespace TrunkBot.Labeling
                         Messages.CANNOT_CALCULATE_NAME_CANDIDATE,
                         plasticFindPattern));
 
-            string newLabelName = PickNonExistentLabelName(
-                restApi, repository, newLabelNameCandidate);
+            string newLabelName = await PickNonExistentLabelName(
+                repoApi, repository, newLabelNameCandidate);
 
             if (string.IsNullOrEmpty(newLabelName))
                 return new Result(
@@ -61,14 +61,18 @@ namespace TrunkBot.Labeling
                         newLabelName,
                         newLabelName + Tokens.AUTO_INCREMENT_EXISTING_PATTERN));
 
-            return CreateLabelInRep(newLabelName, csetId, repository, restApi);
+            return CreateLabelInRep(repoApi, newLabelName, csetId, repository);
         }
 
-        static Result CreateLabelInRep(string labelName, int csetId, string repository, RestApi restApi)
+        static Result CreateLabelInRep(
+            IRepositoryOperationsForMergebot repoApi,
+            string labelName,
+            int csetId,
+            string repository)
         {
             try
             {
-                TrunkMergebotApi.Labels.Create(restApi, repository, labelName, csetId, string.Empty);
+                repoApi.CreateLabel(repository, labelName, csetId, string.Empty);
                 return new Result(true, labelName, string.Empty);
             }
             catch(Exception e)
@@ -77,23 +81,22 @@ namespace TrunkBot.Labeling
             }
         }
 
-        static string PickNonExistentLabelName(
-            RestApi restApi, string repository, string newLabelNameCandidate)
+        async static Task<string> PickNonExistentLabelName(
+            IRepositoryOperationsForMergebot repoApi, string repository, string newLabelNameCandidate)
         {
-            Label repoLabel = FindQueries.FindMostRecentLabel(
-                restApi, repository, DateTime.MinValue, newLabelNameCandidate);
+            Label repoLabel = await repoApi.FindMostRecentLabel(
+                repository, DateTime.MinValue, newLabelNameCandidate);
 
             if (repoLabel == null)
                 return newLabelNameCandidate;
 
-            return GetAutoIncrementedExistingLabel(restApi, repository, newLabelNameCandidate);
+            return await GetAutoIncrementedExistingLabel(repoApi, repository, newLabelNameCandidate);
         }
 
-        static string GetAutoIncrementedExistingLabel(
-            RestApi restApi, string repository, string existingLabelName)
+        async static Task<string> GetAutoIncrementedExistingLabel(
+            IRepositoryOperationsForMergebot repoApi, string repository, string existingLabelName)
         {
-            Label lastMatchingLabel = FindQueries.FindMostRecentLabel(
-                restApi, 
+            Label lastMatchingLabel = await repoApi.FindMostRecentLabel(
                 repository, 
                 DateTime.MinValue,
                 existingLabelName + Tokens.AUTO_INCREMENT_EXISTING_PATTERN);

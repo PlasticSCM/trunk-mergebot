@@ -1,17 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
-using log4net;
+using Codice.CM.Server.Devops;
 
-using TrunkBot.Api;
 using TrunkBot.Configuration;
 
 namespace TrunkBot
 {
     internal static class ChangeTaskStatus
     {
-        internal static void SetTaskAsTesting(
-            RestApi restApi,
+        internal static async Task SetTaskAsTesting(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             Branch branch,
             string taskNumber,
             string message,
@@ -21,8 +24,8 @@ namespace TrunkBot
             {
                 if (!string.IsNullOrEmpty(botConfig.Plastic.StatusAttribute.TestingValue))
                 {
-                    TrunkMergebotApi.ChangeBranchAttribute(
-                        restApi, branch.Repository, branch.FullName,
+                    await repoApi.ChangeBranchAttributeValue(
+                        branch.Repository, branch.FullName,
                         botConfig.Plastic.StatusAttribute.Name,
                         botConfig.Plastic.StatusAttribute.TestingValue);
                 }
@@ -30,124 +33,120 @@ namespace TrunkBot
                 if (taskNumber != null && botConfig.Issues != null &&
                     !string.IsNullOrEmpty(botConfig.Issues.StatusField.TestingValue))
                 {
-                    TrunkMergebotApi.Issues.SetIssueField(
-                        restApi, botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
+                    await issueTracker.SetIssueFieldValue(
+                        botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
                         taskNumber, botConfig.Issues.StatusField.Name,
                         botConfig.Issues.StatusField.TestingValue);
                 }
 
-                Notifier.NotifyTaskStatus(
-                    restApi, branch.Owner, message,
-                    botConfig.Notifications);
+                await Notifier.NotifyTaskStatus(
+                    notifier, userProfile, branch.Owner, message, botConfig.Notifications);
             }
             catch (Exception ex)
             {
-                Notifier.NotifyException(
-                    restApi, branch, message,
-                    "testing", ex, botConfig.Notifications);
+                await Notifier.NotifyException(
+                    notifier, userProfile, branch, message, "testing", ex, botConfig.Notifications);
             }
         }
 
-        internal static void SetTaskAsFailed(
-            RestApi restApi,
+        internal static async Task SetTaskAsFailed(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             Branch branch,
             string taskNumber,
             string message,
             TrunkBotConfiguration botConfig,
-            string codeReviewsStorageFile)
+            ReviewsStorage reviewsStorage)
         {
             try
             {
                 if (botConfig.Plastic.IsApprovedCodeReviewFilterEnabled)
-                    SetBranchReviewsAsPending(restApi, branch.Repository, branch.Id, codeReviewsStorageFile);
+                    SetBranchReviewsAsUnderReview(
+                        repoApi, branch.Repository, branch.Id, reviewsStorage);
 
-                TrunkMergebotApi.ChangeBranchAttribute(
-                    restApi, branch.Repository, branch.FullName,
+                await repoApi.ChangeBranchAttributeValue(
+                    branch.Repository, branch.FullName,
                     botConfig.Plastic.StatusAttribute.Name,
                     botConfig.Plastic.StatusAttribute.FailedValue);
 
                 if (taskNumber != null && botConfig.Issues != null)
                 {
-                    TrunkMergebotApi.Issues.SetIssueField(
-                        restApi, botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
+                    await issueTracker.SetIssueFieldValue(
+                        botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
                         taskNumber, botConfig.Issues.StatusField.Name,
                         botConfig.Issues.StatusField.FailedValue);
                 }
 
-                Notifier.NotifyTaskStatus(
-                    restApi, branch.Owner, message,
-                    botConfig.Notifications);
+                await Notifier.NotifyTaskStatus(
+                    notifier, userProfile, branch.Owner, message, botConfig.Notifications);
             }
             catch (Exception ex)
             {
-                Notifier.NotifyException(
-                    restApi, branch, message,
-                    "failed", ex, botConfig.Notifications);
+                await Notifier.NotifyException(
+                    notifier, userProfile, branch, message, "failed", ex, botConfig.Notifications);
             }
         }
 
-        internal static void SetTaskAsMerged(
-            RestApi restApi,
+        internal static async Task SetTaskAsMerged(
+            IIssueTrackerPlugService issueTracker,
+            INotifierPlugService notifier,
+            IRepositoryOperationsForMergebot repoApi,
+            IGetUserProfile userProfile,
             Branch branch,
             string taskNumber,
             string message,
             TrunkBotConfiguration botConfig,
-            string codeReviewsStorageFile)
+            ReviewsStorage reviewsStorage)
         {
             try
             {
                 if (botConfig.Plastic.IsApprovedCodeReviewFilterEnabled)
                 {
-                    ReviewsStorage.DeleteBranchReviews(
-                        branch.Repository, branch.Id, codeReviewsStorageFile);
+                    reviewsStorage.DeleteBranchReviews(branch.Repository, branch.Id);
                 }
 
-                TrunkMergebotApi.ChangeBranchAttribute(
-                    restApi, branch.Repository, branch.FullName,
+                await repoApi.ChangeBranchAttributeValue(
+                    branch.Repository, branch.FullName,
                     botConfig.Plastic.StatusAttribute.Name,
                     botConfig.Plastic.StatusAttribute.MergedValue);
 
                 if (taskNumber != null && botConfig.Issues != null)
                 {
-                    TrunkMergebotApi.Issues.SetIssueField(
-                        restApi, botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
+                    await issueTracker.SetIssueFieldValue(
+                        botConfig.Issues.Plug, botConfig.Issues.ProjectKey,
                         taskNumber, botConfig.Issues.StatusField.Name,
                         botConfig.Issues.StatusField.MergedValue);
                 }
 
-                Notifier.NotifyTaskStatus(
-                    restApi, branch.Owner, message,
-                    botConfig.Notifications);
+                await Notifier.NotifyTaskStatus(
+                    notifier, userProfile, branch.Owner, message, botConfig.Notifications);
             }
             catch (Exception ex)
             {
-                Notifier.NotifyException(
-                    restApi, branch, message,
-                    "merged", ex, botConfig.Notifications);
+                await Notifier.NotifyException(
+                    notifier, userProfile, branch, message, "merged", ex, botConfig.Notifications);
             }
         }
 
-        static void SetBranchReviewsAsPending(
-            RestApi restApi, 
+        static void SetBranchReviewsAsUnderReview(
+            IRepositoryOperationsForMergebot repoApi, 
             string repoName,
-            string branchId, 
-            string codeReviewsStorageFile)
+            int branchId, 
+            ReviewsStorage reviewsStorage)
         {
-            List<Review> branchReviews = ReviewsStorage.GetBranchReviews(
-                repoName, branchId, codeReviewsStorageFile);
+            List<Review> branchReviews = reviewsStorage.GetBranchReviews(repoName, branchId);
 
             foreach (Review review in branchReviews)
             {
-                TrunkMergebotApi.CodeReviews.Update(
-                    restApi,
+                repoApi.UpdateCodeReview(
                     repoName,
                     review.ReviewId,
-                    Review.PENDING_STATUS_ID,
+                    Review.UNDER_REVIEW_STATUS_ID,
                     review.ReviewTitle);
             }
             
         }
-
-        static readonly ILog mLog = LogManager.GetLogger("trunkbot");
     }
 }

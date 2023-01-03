@@ -2,8 +2,10 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Threading.Tasks;
 
-using log4net;
+using Codice.CM.Server.Devops;
+using Codice.LogWrapper;
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -39,7 +41,7 @@ namespace TrunkBot.Api
             CodeReviews = new CodeReviewApi(mBaseUri, apiKey);
         }
 
-        internal BranchModel GetBranch(
+        internal async Task<BranchModel> GetBranch(
             string repoName, string branchName)
         {
             Uri endpoint = ApiUris.GetFullUri(
@@ -48,22 +50,22 @@ namespace TrunkBot.Api
 
             string actionDescription = string.Format(
                 "get info of branch br:{0}@{1}", branchName, repoName);
-            return Internal.MakeApiRequest<BranchModel>(
+            return await Internal.MakeApiRequest<BranchModel>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
-        internal ChangesetModel GetChangeset(string repoName, int changesetId)
+        internal async Task<ChangesetModel> GetChangeset(string repoName, int changesetId)
         {
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.GetChangeset, repoName, changesetId.ToString());
 
             string actionDescription = string.Format(
                 "get info of changeset cs:{0}@{1}", changesetId, repoName);
-            return Internal.MakeApiRequest<ChangesetModel>(
+            return await Internal.MakeApiRequest<ChangesetModel>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
-        internal SingleResponse GetAttribute(
+        internal async Task<SingleResponse> GetAttribute(
             string repoName,
             string attributeName,
             AttributeTargetType targetType,
@@ -80,11 +82,11 @@ namespace TrunkBot.Api
                 repoName,
                 targetType,
                 targetName);
-            return Internal.MakeApiRequest<SingleResponse>(
+            return await Internal.MakeApiRequest<SingleResponse>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
-        internal void ChangeAttribute(
+        internal async Task ChangeAttribute(
             string repoName, string attributeName, ChangeAttributeRequest request)
         {
             Uri endpoint = ApiUris.GetFullUri(
@@ -98,11 +100,11 @@ namespace TrunkBot.Api
                 request.TargetType,
                 request.TargetName,
                 request.Value);
-            Internal.MakeApiRequest<ChangeAttributeRequest>(
+            await Internal.MakeApiRequest(
                 endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
         }
 
-        internal MergeToResponse MergeTo(
+        internal async Task<MergeToResponse> MergeTo(
             string repoName, MergeToRequest request)
         {
             Uri endpoint = ApiUris.GetFullUri(
@@ -113,12 +115,11 @@ namespace TrunkBot.Api
                 request.SourceType,
                 request.Source,
                 request.Destination);
-            return Internal.MakeApiRequest<MergeToRequest, MergeToResponse>(
+            return await Internal.MakeApiRequest<MergeToRequest, MergeToResponse>(
                 endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
         }
 
-        internal MergeToAllowedResponse IsMergeAllowed(
-            RestApi restApi, 
+        internal async Task<MergeToAllowedResponse> IsMergeAllowed(
             string repoName, 
             string sourceBranchName, 
             string destinationBranchName)
@@ -136,11 +137,11 @@ namespace TrunkBot.Api
                 sourceBranchName,
                 destinationBranchName);
 
-            return Internal.MakeApiRequest<MergeToAllowedResponse>(
+            return await Internal.MakeApiRequest<MergeToAllowedResponse>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
-        internal void DeleteShelve(string repoName, int shelveId)
+        internal async Task DeleteShelve(string repoName, int shelveId)
         {
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.DeleteShelve,
@@ -148,11 +149,11 @@ namespace TrunkBot.Api
 
             string actionDescription = string.Format(
                 "delete shelve sh:{0}@{1}", shelveId, repoName);
-            Internal.MakeApiRequest(
+            await Internal.MakeApiRequest(
                 endpoint, HttpMethod.Delete, actionDescription, mApiKey);
         }
 
-        internal JArray Find(
+        internal async Task<JArray> Find(
             string repoName,
             string query,
             string queryDateFormat,
@@ -166,11 +167,11 @@ namespace TrunkBot.Api
             Uri endpoint = ApiUris.GetFullUri(
                 mBaseUri, ApiEndpoints.Find, repoName, query, queryDateFormat, fieldsQuery);
 
-            return Internal.MakeApiRequest<JArray>(
+            return await Internal.MakeApiRequest<JArray>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
-        internal JArray FindBranchesWithReviews(
+        internal async Task<JArray> FindBranchesWithReviews(
             string repoName,
             string reviewConditions,
             string branchConditions,
@@ -191,7 +192,7 @@ namespace TrunkBot.Api
                 queryDateFormat, 
                 fieldsQuery);
 
-            return Internal.MakeApiRequest<JArray>(
+            return await Internal.MakeApiRequest<JArray>(
                 endpoint, HttpMethod.Get, actionDescription, mApiKey);
         }
 
@@ -224,7 +225,7 @@ namespace TrunkBot.Api
                 string actionDescriptions = string.Format(
                     "get profile of user '{0}'", name);
                 return Internal.MakeApiRequest<JObject>(
-                    endpoint, HttpMethod.Get, actionDescriptions, mApiKey);
+                    endpoint, HttpMethod.Get, actionDescriptions, mApiKey).GetAwaiter().GetResult();
             }
 
             readonly Uri mBaseUri;
@@ -239,7 +240,7 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal void ReportMerge(
+            internal async Task ReportMerge(
                 string mergebotName, MergeReport mergeReport)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -250,7 +251,7 @@ namespace TrunkBot.Api
                     "upload merge report of br:{0} (repo ID: {1})",
                     mergeReport.BranchId,
                     mergeReport.RepositoryId);
-                Internal.MakeApiRequest<MergeReport>(
+                await Internal.MakeApiRequest(
                     endpoint, HttpMethod.Put, mergeReport, actionDescription, mApiKey);
             }
 
@@ -266,7 +267,7 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal SingleResponse IsConnected(
+            internal async Task<SingleResponse> IsConnected(
                 string issueTrackerName)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -275,11 +276,11 @@ namespace TrunkBot.Api
 
                 string actionDescription = string.Format(
                     "test connection to '{0}'", issueTrackerName);
-                return Internal.MakeApiRequest<SingleResponse>(
+                return await Internal.MakeApiRequest<SingleResponse>(
                     endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
-            internal SingleResponse GetIssueUrl(
+            internal async Task<SingleResponse> GetIssueUrl(
                 string issueTrackerName, string projectKey, string taskNumber)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -289,11 +290,11 @@ namespace TrunkBot.Api
                 string actionDescription = string.Format(
                     "get URL of issue {0}-{1} in {2}",
                     projectKey, taskNumber, issueTrackerName);
-                return Internal.MakeApiRequest<SingleResponse>(
+                return await Internal.MakeApiRequest<SingleResponse>(
                     endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
-            internal SingleResponse GetIssueField(
+            internal async Task<SingleResponse> GetIssueField(
                 string issueTrackerName, string projectKey, string taskNumber, string fieldName)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -303,11 +304,11 @@ namespace TrunkBot.Api
                 string actionDescription = string.Format(
                     "get field '{0}' of issue {1}-{2} in {3}",
                     fieldName, projectKey, taskNumber, issueTrackerName);
-                return Internal.MakeApiRequest<SingleResponse>(
+                return await Internal.MakeApiRequest<SingleResponse>(
                     endpoint, HttpMethod.Get, actionDescription, mApiKey);
             }
 
-            internal SingleResponse SetIssueField(
+            internal async Task<SingleResponse> SetIssueField(
                 string issueTrackerName, string projectKey, string taskNumber, string fieldName,
                 SetIssueFieldRequest request)
             {
@@ -318,7 +319,7 @@ namespace TrunkBot.Api
                 string actionDescription = string.Format(
                     "set field '{0}' of issue {1}-{2} in {3} to value '{4}'",
                     fieldName, projectKey, taskNumber, issueTrackerName, request.NewValue);
-                return Internal.MakeApiRequest<SetIssueFieldRequest, SingleResponse>(
+                return await Internal.MakeApiRequest<SetIssueFieldRequest, SingleResponse>(
                     endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
             }
 
@@ -334,7 +335,7 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal void NotifyMessage(
+            internal async Task NotifyMessage(
                 string notifierName, NotifyMessageRequest request)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -343,7 +344,7 @@ namespace TrunkBot.Api
 
                 string actionDescription = string.Format(
                     "send message to '{0}'", string.Join(", ", request.Recipients));
-                Internal.MakeApiRequest<NotifyMessageRequest>(
+                await Internal.MakeApiRequest<NotifyMessageRequest>(
                     endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
             }
 
@@ -359,18 +360,18 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal SingleResponse LaunchPlan(
+            internal async Task<SingleResponse> LaunchPlan(
                 string ciName, string planName, LaunchPlanRequest request)
             {
                 Uri endpoint = ApiUris.GetFullUri(
                     mBaseUri, ApiEndpoints.CI.LaunchPlan,
                     ciName, planName);
 
-                return Internal.MakeApiRequest<LaunchPlanRequest, SingleResponse>(
+                return await Internal.MakeApiRequest<LaunchPlanRequest, SingleResponse>(
                     endpoint, HttpMethod.Post, request, "launch CI plan", mApiKey);
             }
 
-            internal GetPlanStatusResponse GetPlanStatus(
+            internal async Task<GetPlanStatusResponse> GetPlanStatus(
                 string ciName, string planName, string buildId)
             {
                 Uri endpoint = null;
@@ -380,7 +381,7 @@ namespace TrunkBot.Api
                         mBaseUri, ApiEndpoints.CI.GetPlanStatus,
                         ciName, buildId, planName);
 
-                    return Internal.MakeApiRequest<GetPlanStatusResponse>(
+                    return await Internal.MakeApiRequest<GetPlanStatusResponse>(
                         endpoint, HttpMethod.Get, "retrieve CI plan status", mApiKey);
                 }
                 catch (Exception e)
@@ -403,7 +404,7 @@ namespace TrunkBot.Api
                         throw;
                     }
 
-                    return GetLegacyPlanStatus(ciName, planName, buildId);
+                    return await GetLegacyPlanStatus(ciName, planName, buildId);
                 }
             }
 
@@ -428,7 +429,7 @@ namespace TrunkBot.Api
                 return webExResponse.StatusCode == HttpStatusCode.NotFound;
             }
 
-            GetPlanStatusResponse GetLegacyPlanStatus(
+            async Task<GetPlanStatusResponse> GetLegacyPlanStatus(
                 string ciName, string planName, string buildId)
             {
                 Uri endpoint = ApiUris.GetFullUri(
@@ -439,7 +440,7 @@ namespace TrunkBot.Api
                     "Falling back to the legacy get plan status endpoint {0}",
                     endpoint == null ? string.Empty : endpoint.AbsolutePath);
 
-                return Internal.MakeApiRequest<GetPlanStatusResponse>(
+                return await Internal.MakeApiRequest<GetPlanStatusResponse>(
                     endpoint, HttpMethod.Get, "retrieve CI plan status - deprecated", mApiKey);
             }
 
@@ -455,7 +456,7 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal SingleResponse Create(string repoName, CreateAttributeRequest request)
+            internal async Task<SingleResponse> Create(string repoName, CreateAttributeRequest request)
             {
                 Uri endpoint = ApiUris.GetFullUri(
                     mBaseUri, ApiEndpoints.CreateAttribute, repoName);
@@ -463,7 +464,7 @@ namespace TrunkBot.Api
                 string actionDescription = string.Format(
                     "create attribute name {0} on repo {1}", request.Name, repoName);
 
-                return Internal.MakeApiRequest<CreateAttributeRequest, SingleResponse>(
+                return await Internal.MakeApiRequest<CreateAttributeRequest, SingleResponse>(
                     endpoint, HttpMethod.Post, request, actionDescription, mApiKey);
             }
 
@@ -479,14 +480,13 @@ namespace TrunkBot.Api
                 mApiKey = apiKey;
             }
 
-            internal void UpdateReview(
-                string repoName, string reviewId, UpdateReviewRequest request)
+            internal async Task UpdateReview(string repoName, int reviewId, UpdateReviewRequest request)
             {
                 Uri endpoint = ApiUris.GetFullUri(
                     mBaseUri, 
                     ApiEndpoints.UpdateReviewStatus,
                     repoName,
-                    reviewId);
+                    reviewId.ToString());
 
                 string actionDescription = string.Format(
                     "update review id {0} to status {1} and title {2}",
@@ -494,7 +494,7 @@ namespace TrunkBot.Api
                     request.Status,
                     request.Title);
 
-                Internal.MakeApiRequest<UpdateReviewRequest>(
+                await Internal.MakeApiRequest(
                     endpoint, HttpMethod.Put, request, actionDescription, mApiKey);
             }
 
@@ -512,19 +512,19 @@ namespace TrunkBot.Api
             readonly Uri mBaseUri;
             readonly string mApiKey;
 
-            internal void Create(string repository, CreateLabelRequest req)
+            internal async Task Create(string repository, CreateLabelRequest req)
             {
                 Uri endpoint = ApiUris.GetFullUri(
                     mBaseUri, ApiEndpoints.Labels.Create, repository);
 
-                Internal.MakeApiRequest<CreateLabelRequest>(
+                await Internal.MakeApiRequest(
                     endpoint, HttpMethod.Post, req, "create label " + req.Name, mApiKey);
             }
         }
 
         static class Internal
         {
-            internal static void MakeApiRequest(
+            internal static async Task MakeApiRequest(
                 Uri endpoint, HttpMethod httpMethod, string actionDescription, string apiKey)
             {
                 try
@@ -532,7 +532,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest(
                         endpoint, httpMethod, apiKey);
 
-                    GetResponse(request);
+                    await GetResponseAsync(request);
                 }
                 catch (WebException ex)
                 {
@@ -550,7 +550,7 @@ namespace TrunkBot.Api
                 }
             }
 
-            internal static void MakeApiRequest<TReq>(
+            internal static async Task MakeApiRequest<TReq>(
                 Uri endpoint,
                 HttpMethod httpMethod,
                 TReq body,
@@ -562,7 +562,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest<TReq>(
                         endpoint, httpMethod, body, apiKey);
 
-                    GetResponse(request);
+                    await GetResponseAsync(request);
                 }
                 catch (WebException ex)
                 {
@@ -580,7 +580,7 @@ namespace TrunkBot.Api
                 }
             }
 
-            internal static TRes MakeApiRequest<TRes>(
+            internal static async Task<TRes> MakeApiRequest<TRes>(
                 Uri endpoint, HttpMethod httpMethod, string actionDescription, string apiKey)
             {
                 try
@@ -588,7 +588,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest(
                         endpoint, httpMethod, apiKey);
 
-                    return GetResponse<TRes>(request);
+                    return await GetResponseAsync<TRes>(request);
                 }
                 catch (WebException ex)
                 {
@@ -606,7 +606,7 @@ namespace TrunkBot.Api
                 }
             }
 
-            internal static TRes MakeApiRequest<TReq, TRes>(
+            internal static async Task<TRes> MakeApiRequest<TReq, TRes>(
                 Uri endpoint,
                 HttpMethod httpMethod,
                 TReq body,
@@ -618,7 +618,7 @@ namespace TrunkBot.Api
                     HttpWebRequest request = CreateWebRequest<TReq>(
                         endpoint, httpMethod, body, apiKey);
 
-                    return GetResponse<TRes>(request);
+                    return await GetResponseAsync<TRes>(request);
                 }
                 catch (WebException ex)
                 {
@@ -670,18 +670,18 @@ namespace TrunkBot.Api
                 }
             }
 
-            static TRes GetResponse<TRes>(WebRequest request)
+            static async Task<TRes> GetResponseAsync<TRes>(WebRequest request)
             {
-                using (WebResponse response = request.GetResponse())
+                using (WebResponse response = await request.GetResponseAsync())
                 using (StreamReader reader = new StreamReader(response.GetResponseStream()))
                 {
-                    return JsonConvert.DeserializeObject<TRes>(reader.ReadToEnd());
+                    return JsonConvert.DeserializeObject<TRes>(await reader.ReadToEndAsync());
                 }
             }
 
-            static void GetResponse(WebRequest request)
+            static async Task GetResponseAsync(WebRequest request)
             {
-                using (WebResponse response = request.GetResponse()) ;
+                using (WebResponse response = await request.GetResponseAsync()) { }
             }
         }
 
@@ -774,9 +774,10 @@ namespace TrunkBot.Api
             }
         }
 
+        
         readonly Uri mBaseUri;
         readonly string mApiKey;
 
-        static readonly ILog mLog = LogManager.GetLogger("RestApi");
+        static readonly ILog mLog = LogManager.GetLogger("TrunkBot-RestApi");
     }
 }
